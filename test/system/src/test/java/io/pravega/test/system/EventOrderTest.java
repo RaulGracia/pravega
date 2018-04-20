@@ -22,6 +22,7 @@ import io.pravega.client.stream.ScalingPolicy;
 import io.pravega.client.stream.StreamConfiguration;
 import io.pravega.client.stream.impl.JavaSerializer;
 import io.pravega.common.concurrent.ExecutorServiceHelpers;
+import io.pravega.common.concurrent.Futures;
 import io.pravega.common.hash.RandomFactory;
 import io.pravega.test.system.framework.Environment;
 import io.pravega.test.system.framework.SystemTestRunner;
@@ -35,6 +36,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -128,7 +130,7 @@ public class EventOrderTest {
         @Cleanup
         ClientFactory clientFactory = ClientFactory.withScope(SCOPE, controllerURI);
 
-        //Start writers.
+        //Start 3 writers.
         List<CompletableFuture<Void>> writerFutureList = new ArrayList<>();
         writerFutureList.add(CompletableFuture.<Void>supplyAsync(() -> {
             createWriter(clientFactory).start();
@@ -145,15 +147,24 @@ public class EventOrderTest {
             return null;
         }, writerExecutor));
 
-        CompletableFuture<Void> verifyFuture = CompletableFuture.supplyAsync(() -> {
-            try {
-                readAndVerifyOrder(clientFactory);
-            } catch (ReinitializationRequiredException e) {
-                throw new CompletionException(e);
-            }
-            return null;
-        }, verifyExecutor);
+        //Start read an verify after a delay of 30 seconds.
+        CompletableFuture<Void> verifyFuture = Futures.delayedFuture(Duration.ofSeconds(30), verifyExecutor)
+                .thenComposeAsync(v -> {
+                    try {
+                        readAndVerifyOrder(clientFactory);
+                    } catch (ReinitializationRequiredException e) {
+                        log.error("=> Reinitialization Required Exception observed", e);
+                        throw new CompletionException(e);
+                    }
+                    return null;
+                }, verifyExecutor)
+                .handle((o, ex) -> {
+                    log.error("Verification Error", ex);
+                    return null;
+                });
 
+        //Wait until all the events are read.
+        verifyFuture.get();
         readerGroupManager.deleteReaderGroup(READER_GROUP_NAME); //clean up
     }
 
@@ -195,7 +206,7 @@ public class EventOrderTest {
     private PravegaWriter createWriter(ClientFactory clientFactory) {
         PravegaWriter writer = new PravegaWriter().withClientFactory(clientFactory).withStreamName("test")
                 .withWriterFinishedHandler(t -> log.error("==> Error while writing", t))
-                .withMaxEventCount(2_000_000L);
+                .withMaxEventCount(8_000_000L);
         writer.prepare();
         return writer;
     }
