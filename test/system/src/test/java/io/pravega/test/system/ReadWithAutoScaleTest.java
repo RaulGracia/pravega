@@ -47,6 +47,7 @@ import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -57,6 +58,7 @@ import static org.junit.Assert.assertTrue;
 
 @Slf4j
 @RunWith(SystemTestRunner.class)
+@Ignore
 public class ReadWithAutoScaleTest extends AbstractScaleTests {
 
     private final static String STREAM_NAME = "testTxnScaleUpWithRead";
