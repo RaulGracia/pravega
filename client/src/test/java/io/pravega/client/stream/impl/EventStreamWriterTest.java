@@ -48,7 +48,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 
 public class EventStreamWriterTest extends ThreadPooledTestSuite {
-    
+
     @Test
     public void testWrite() {
         String scope = "scope";
@@ -79,11 +79,11 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         segments.put(1.0, segment);
         return new StreamSegments(segments, "");
     }
-    
+
     private CompletableFuture<StreamSegments> getSegmentsFuture(Segment segment) {
         return CompletableFuture.completedFuture(getSegments(segment));
     }
-    
+
     private CompletableFuture<StreamSegmentsWithPredecessors> getReplacement(Segment old, Segment repacement) {
         Map<SegmentWithRange, List<Integer>> segments = new HashMap<>();
         segments.put(new SegmentWithRange(repacement, 0, 1), Collections.singletonList(old.getSegmentNumber()));
@@ -129,7 +129,7 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         private final ArrayList<PendingEvent> acked = new ArrayList<>();
         private final ArrayList<PendingEvent> unacked = new ArrayList<>();
         private boolean sealed = false;
- 
+
         private void invokeSealedCallBack() {
             if (callBackForSealed != null) {
                 callBackForSealed.accept(segment);
@@ -150,6 +150,8 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
             if (!sealed) {
                 acked.addAll(unacked);
                 unacked.clear();
+            } else {
+                throw new SegmentSealedException("Segment already sealed");
             }
         }
 
@@ -277,20 +279,20 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         FakeSegmentOutputStream outputStream2 = new FakeSegmentOutputStream(segment2);
 
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream1.callBackForSealed = i.getArgument(1);
-                    return outputStream1;
-                });
+               .thenAnswer(i -> {
+                   outputStream1.callBackForSealed = i.getArgument(1);
+                   return outputStream1;
+               });
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment2), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream2.callBackForSealed = i.getArgument(1);
-                    return outputStream2;
-                });
+               .thenAnswer(i -> {
+                   outputStream2.callBackForSealed = i.getArgument(1);
+                   return outputStream2;
+               });
 
         JavaSerializer<String> serializer = new JavaSerializer<>();
         Mockito.when(controller.getCurrentSegments(scope, streamName))
-                .thenReturn(getSegmentsFuture(segment1))
-                .thenReturn(getSegmentsFuture(segment2));
+               .thenReturn(getSegmentsFuture(segment1))
+               .thenReturn(getSegmentsFuture(segment2));
         @Cleanup
         EventStreamWriter<String> writer = new EventStreamWriterImpl<>(stream, controller, streamFactory, serializer,
                 config, executorService());
@@ -340,7 +342,7 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         Mockito.when(controller.createTransaction(stream, 0, 0))
                .thenReturn(CompletableFuture.completedFuture(new TxnSegments(getSegments(segment), txid)));
         Mockito.when(streamFactory.createOutputStreamForTransaction(eq(segment), eq(txid), any(), any(), any()))
-                .thenReturn(outputStream);
+               .thenReturn(outputStream);
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment), any(), any(), any())).thenReturn(bad);
 
         JavaSerializer<String> serializer = new JavaSerializer<>();
@@ -374,7 +376,7 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         Mockito.when(controller.createTransaction(stream, 0,  0))
                .thenReturn(CompletableFuture.completedFuture(new TxnSegments(getSegments(segment), txid)));
         Mockito.when(streamFactory.createOutputStreamForTransaction(eq(segment), eq(txid), any(), any(), any()))
-                .thenReturn(outputStream);
+               .thenReturn(outputStream);
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment), any(), any(), any())).thenReturn(bad);
 
         JavaSerializer<String> serializer = new JavaSerializer<>();
@@ -416,7 +418,7 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         writer.flush();
         assertTrue(outputStream.unacked.isEmpty());
     }
-    
+
     @Test
     public void testSealInvokesFlush() {
         String scope = "scope";
@@ -431,7 +433,7 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         FakeSegmentOutputStream outputStream1 = new FakeSegmentOutputStream(segment1);
         FakeSegmentOutputStream outputStream2 = new FakeSegmentOutputStream(segment2);
         Mockito.when(controller.getCurrentSegments(scope, streamName))
-                .thenReturn(getSegmentsFuture(segment1));
+               .thenReturn(getSegmentsFuture(segment1));
         Mockito.when(controller.getSuccessors(segment1)).thenReturn(getReplacement(segment1, segment2));
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any())).thenAnswer(i -> {
             outputStream1.callBackForSealed = i.getArgument(1);
@@ -470,10 +472,10 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
                .thenReturn(getSegmentsFuture(segment1));
         Mockito.when(controller.getSuccessors(segment1)).thenReturn(getReplacement(segment1, segment2));
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream.callBackForSealed = i.getArgument(1);
-                    return outputStream;
-                });
+               .thenAnswer(i -> {
+                   outputStream.callBackForSealed = i.getArgument(1);
+                   return outputStream;
+               });
         JavaSerializer<String> serializer = new JavaSerializer<>();
         @Cleanup
         EventStreamWriter<String> writer = new EventStreamWriterImpl<>(stream, controller, streamFactory, serializer,
@@ -506,13 +508,13 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         Controller controller = Mockito.mock(Controller.class);
         SealedSegmentOutputStream outputStream = new SealedSegmentOutputStream(segment1);
         Mockito.when(controller.getCurrentSegments(scope, streamName))
-                .thenReturn(getSegmentsFuture(segment1));
+               .thenReturn(getSegmentsFuture(segment1));
         Mockito.when(controller.getSuccessors(segment1)).thenReturn(getReplacement(segment1, segment2));
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream.callBackForSealed = i.getArgument(1);
-                    return outputStream;
-                });
+               .thenAnswer(i -> {
+                   outputStream.callBackForSealed = i.getArgument(1);
+                   return outputStream;
+               });
         JavaSerializer<String> serializer = new JavaSerializer<>();
         @Cleanup
         EventStreamWriter<String> writer = new EventStreamWriterImpl<>(stream, controller, streamFactory, serializer,
@@ -552,13 +554,13 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         Controller controller = Mockito.mock(Controller.class);
         SealedSegmentOutputStream outputStream = new SealedSegmentOutputStream(segment1);
         Mockito.when(controller.getCurrentSegments(scope, streamName))
-                .thenReturn(getSegmentsFuture(segment1));
+               .thenReturn(getSegmentsFuture(segment1));
         Mockito.when(controller.getSuccessors(segment1)).thenReturn(getReplacement(segment1, segment2));
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream.callBackForSealed = i.getArgument(1);
-                    return outputStream;
-                });
+               .thenAnswer(i -> {
+                   outputStream.callBackForSealed = i.getArgument(1);
+                   return outputStream;
+               });
         JavaSerializer<String> serializer = new JavaSerializer<>();
         @Cleanup
         EventStreamWriter<String> writer = new EventStreamWriterImpl<>(stream, controller, streamFactory, serializer,
@@ -584,7 +586,7 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         assertTrue(outputStream2.fetchCurrentSegmentLength() > 0);
         assertEquals(serializer.serialize("Foo"), outputStream2.read());
     }
-    
+
     @Test
     public void testRetryCloseSegmentSealed() throws EndOfSegmentException, SegmentTruncatedException {
         String scope = "scope";
@@ -598,13 +600,13 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         Controller controller = Mockito.mock(Controller.class);
         SealedSegmentOutputStream outputStream = new SealedSegmentOutputStream(segment1);
         Mockito.when(controller.getCurrentSegments(scope, streamName))
-                .thenReturn(getSegmentsFuture(segment1));
+               .thenReturn(getSegmentsFuture(segment1));
         Mockito.when(controller.getSuccessors(segment1)).thenReturn(getReplacement(segment1, segment2));
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream.callBackForSealed = i.getArgument(1);
-                    return outputStream;
-                });
+               .thenAnswer(i -> {
+                   outputStream.callBackForSealed = i.getArgument(1);
+                   return outputStream;
+               });
         JavaSerializer<String> serializer = new JavaSerializer<>();
         @Cleanup
         EventStreamWriter<String> writer = new EventStreamWriterImpl<>(stream, controller, streamFactory, serializer,
@@ -643,13 +645,13 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         Controller controller = Mockito.mock(Controller.class);
         FakeSegmentOutputStream outputStream1 = new FakeSegmentOutputStream(segment1);
         Mockito.when(controller.getCurrentSegments(scope, streamName))
-                .thenReturn(getSegmentsFuture(segment1));
+               .thenReturn(getSegmentsFuture(segment1));
         Mockito.when(controller.getSuccessors(segment1)).thenReturn(getReplacement(segment1, segment2));
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream1.callBackForSealed = i.getArgument(1);
-                    return outputStream1;
-                });
+               .thenAnswer(i -> {
+                   outputStream1.callBackForSealed = i.getArgument(1);
+                   return outputStream1;
+               });
         JavaSerializer<String> serializer = new JavaSerializer<>();
         @Cleanup
         EventStreamWriter<String> writer = new EventStreamWriterImpl<>(stream, controller, streamFactory, serializer,
@@ -691,20 +693,20 @@ public class EventStreamWriterTest extends ThreadPooledTestSuite {
         Mockito.when(controller.getSuccessors(segment2)).thenReturn(getReplacement(segment2, segment3));
 
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment1), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream1.callBackForSealed = i.getArgument(1);
-                    return outputStream1;
-                });
+               .thenAnswer(i -> {
+                   outputStream1.callBackForSealed = i.getArgument(1);
+                   return outputStream1;
+               });
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment2), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream2.callBackForSealed = i.getArgument(1);
-                    return outputStream2;
-                });
+               .thenAnswer(i -> {
+                   outputStream2.callBackForSealed = i.getArgument(1);
+                   return outputStream2;
+               });
         Mockito.when(streamFactory.createOutputStreamForSegment(eq(segment3), any(), any(), any()))
-                .thenAnswer(i -> {
-                    outputStream3.callBackForSealed = i.getArgument(1);
-                    return outputStream3;
-                });
+               .thenAnswer(i -> {
+                   outputStream3.callBackForSealed = i.getArgument(1);
+                   return outputStream3;
+               });
         JavaSerializer<String> serializer = new JavaSerializer<>();
         @Cleanup
         EventStreamWriter<String> writer = new EventStreamWriterImpl<>(stream, controller, streamFactory, serializer,
