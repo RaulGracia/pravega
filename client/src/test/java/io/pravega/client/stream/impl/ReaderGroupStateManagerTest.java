@@ -13,8 +13,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Sets;
 import io.pravega.client.ClientFactory;
-import io.pravega.client.admin.impl.ReaderGroupManagerImpl.ReaderGroupStateInitSerializer;
-import io.pravega.client.admin.impl.ReaderGroupManagerImpl.ReaderGroupStateUpdatesSerializer;
 import io.pravega.client.netty.impl.ConnectionFactory;
 import io.pravega.client.segment.impl.Segment;
 import io.pravega.client.state.StateSynchronizer;
@@ -126,8 +124,7 @@ public class ReaderGroupStateManagerTest {
 
     private StateSynchronizer<ReaderGroupState> createState(String stream, ClientFactory clientFactory,
                                                             SynchronizerConfig config) {
-        return clientFactory.createStateSynchronizer(stream, new ReaderGroupStateUpdatesSerializer(),
-                                                     new ReaderGroupStateInitSerializer(), config);
+        return clientFactory.createStateSynchronizer(stream, new JavaSerializer<>(), new JavaSerializer<>(), config);
     }
     
     @Test(timeout = 20000)
@@ -314,7 +311,10 @@ public class ReaderGroupStateManagerTest {
 
         SynchronizerConfig config = SynchronizerConfig.builder().build();
         @Cleanup
-        StateSynchronizer<ReaderGroupState> state = createState(stream, clientFactory, config);
+        StateSynchronizer<ReaderGroupState> state = clientFactory.createStateSynchronizer(stream,
+                                                                                          new JavaSerializer<>(),
+                                                                                          new JavaSerializer<>(),
+                                                                                          config);
         AtomicLong clock = new AtomicLong();
         Map<Segment, Long> segments = new HashMap<>();
         segments.put(new Segment(scope, stream, 0), 0L);
@@ -368,9 +368,15 @@ public class ReaderGroupStateManagerTest {
 
         SynchronizerConfig config = SynchronizerConfig.builder().build();
         @Cleanup
-        StateSynchronizer<ReaderGroupState> state1 = createState(stream, clientFactory, config);
+        StateSynchronizer<ReaderGroupState> state1 = clientFactory.createStateSynchronizer(stream,
+                                                                                          new JavaSerializer<>(),
+                                                                                          new JavaSerializer<>(),
+                                                                                          config);
         @Cleanup
-        StateSynchronizer<ReaderGroupState> state2 = createState(stream, clientFactory, config);
+        StateSynchronizer<ReaderGroupState> state2 = clientFactory.createStateSynchronizer(stream,
+                                                                                          new JavaSerializer<>(),
+                                                                                          new JavaSerializer<>(),
+                                                                                          config);
         AtomicLong clock = new AtomicLong();
         Map<Segment, Long> segments = new HashMap<>();
         segments.put(new Segment(scope, stream, 0), 0L);

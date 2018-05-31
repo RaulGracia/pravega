@@ -85,8 +85,7 @@ public class EventPointerImpl extends EventPointerInternal {
     private static class EventPointerBuilder implements ObjectBuilder<EventPointerImpl> {
     }
 
-    private static class EventPointerSerializer extends VersionedSerializer.WithBuilder<EventPointerImpl, EventPointerBuilder> {
-
+    public static class EventPointerSerializer extends VersionedSerializer.WithBuilder<EventPointerImpl, EventPointerBuilder> {
         @Override
         protected EventPointerBuilder newBuilder() {
             return builder();

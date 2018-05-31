@@ -33,7 +33,6 @@ public class StreamCutTest {
 
         byte[] buf = serialize(sc);
         assertEquals(sc, deSerializeStreamCut(buf));
-        assertEquals(sc, StreamCut.fromBytes(sc.toBytes()));
     }
 
     @Test
@@ -42,7 +41,6 @@ public class StreamCutTest {
         final byte[] buf = serialize(sc);
         assertEquals(sc, deSerializeStreamCut(buf));
         assertNull(deSerializeStreamCut(buf).asImpl());
-        assertEquals(sc, StreamCut.fromBytes(sc.toBytes()));
     }
 
     private byte[] serialize(StreamCut sc) throws IOException {

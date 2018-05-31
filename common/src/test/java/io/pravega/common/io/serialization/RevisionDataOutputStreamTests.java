@@ -9,7 +9,6 @@
  */
 package io.pravega.common.io.serialization;
 
-import com.google.common.base.Charsets;
 import io.pravega.common.io.EnhancedByteArrayOutputStream;
 import io.pravega.common.io.FixedByteArrayOutputStream;
 import io.pravega.common.io.SerializationException;
@@ -188,9 +187,8 @@ public class RevisionDataOutputStreamTests {
         final int n = 123456;
         final long l = (long) Integer.MAX_VALUE + 1;
         final String s = getUTFString();
-        final byte[] array = s.getBytes(Charsets.UTF_8);
-        int expectedLength = Byte.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES + impl.getUTFLength(s) + array.length
-                + impl.getCompactIntLength(array.length) + array.length;
+        final byte[] array = s.getBytes();
+        int expectedLength = Byte.BYTES + Short.BYTES + Integer.BYTES + Long.BYTES + impl.getUTFLength(s) + array.length + Short.BYTES + array.length;
 
         if (impl.requiresExplicitLength()) {
             // Verify a few methods that shouldn't be allowed to run without setting length beforehand.
