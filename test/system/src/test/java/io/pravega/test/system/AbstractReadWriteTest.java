@@ -555,7 +555,7 @@ abstract class AbstractReadWriteTest {
                 log.warn("Reinitialization of readers required: {}.", e);
                 reinitializationRequired = true;
             }
-        } while (reinitializationRequired || (event.getEvent() != null || event.isCheckpoint()) && validEvents < limit);
+        } while (reinitializationRequired || ((event.getEvent() != null || event.isCheckpoint()) && validEvents < limit));
 
         reader.close();
         return validEvents;
