@@ -48,7 +48,6 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
-
 /**
  * Abstract class that provides convenient event read/write methods for testing purposes.
  */
@@ -60,6 +59,7 @@ abstract class AbstractReadWriteTest {
     static final int WRITER_MAX_RETRY_ATTEMPTS = 20;
     static final int NUM_EVENTS_PER_TRANSACTION = 50;
     static final int RK_RENEWAL_RATE_TRANSACTION = NUM_EVENTS_PER_TRANSACTION / 2;
+    static final int TRANSACTION_TIMEOUT = 59 * 1000;
     static final int RK_RENEWAL_RATE_WRITER = 500;
     static final int SCALE_WAIT_ITERATIONS = 12;
     private static final int READ_TIMEOUT = 1000;
@@ -331,7 +331,7 @@ abstract class AbstractReadWriteTest {
                             new JavaSerializer<>(),
                             EventWriterConfig.builder().maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
                                              .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS)
-                                             .transactionTimeoutTime(59000).build());
+                                             .transactionTimeoutTime(TRANSACTION_TIMEOUT).build());
                     writerList.add(tmpWriter);
                     final CompletableFuture<Void> txnWriteFuture = startWritingIntoTxn(tmpWriter);
                     Futures.exceptionListener(txnWriteFuture, t -> log.error("Error while writing events into transaction:", t));
@@ -339,7 +339,7 @@ abstract class AbstractReadWriteTest {
                 }
 
             }
-        }).thenRun(() -> {
+        }, executorService).thenRun(() -> {
             testState.writers.addAll(writerFutureList);
             Futures.completeAfter(() -> Futures.allOf(writerFutureList),
                     testState.writersListComplete.get(0));
@@ -373,7 +373,7 @@ abstract class AbstractReadWriteTest {
                 Futures.exceptionListener(readerFuture, t -> log.error("Error while reading events:", t));
                 readerFutureList.add(readerFuture);
             }
-        }).thenRun(() -> {
+        }, executorService).thenRun(() -> {
             testState.readers.addAll(readerFutureList);
             Futures.completeAfter(() -> Futures.allOf(readerFutureList), testState.readersComplete);
             Futures.exceptionListener(testState.readersComplete,
@@ -405,14 +405,14 @@ abstract class AbstractReadWriteTest {
                             new JavaSerializer<>(),
                             EventWriterConfig.builder().maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
                                              .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS)
-                                             .transactionTimeoutTime(59000).build());
+                                             .transactionTimeoutTime(TRANSACTION_TIMEOUT).build());
                     newlyAddedWriterList.add(tmpWriter);
                     final CompletableFuture<Void> txnWriteFuture = startWritingIntoTxn(tmpWriter);
                     Futures.exceptionListener(txnWriteFuture, t -> log.error("Error while writing events into transaction:", t));
                     newWritersFutureList.add(txnWriteFuture);
                 }
             }
-        }).thenRun(() -> {
+        }, executorService).thenRun(() -> {
             testState.writers.addAll(newWritersFutureList);
             Futures.completeAfter(() -> Futures.allOf(newWritersFutureList), testState.writersListComplete.get(1));
             Futures.exceptionListener(testState.writersListComplete.get(1),
@@ -479,7 +479,7 @@ abstract class AbstractReadWriteTest {
         EventStreamWriter<String> writer = clientFactory.createEventWriter(streamName, new JavaSerializer<>(),
                 EventWriterConfig.builder().build());
         for (int i = 0; i < totalEvents; i++) {
-            writer.writeEvent(streamName + String.valueOf(i)).join();
+            writer.writeEvent(String.valueOf(i)).join();
             log.debug("Writing event: {} to stream {}.", streamName + String.valueOf(i), streamName);
         }
     }
@@ -487,10 +487,11 @@ abstract class AbstractReadWriteTest {
     List<CompletableFuture<Integer>> readEventFutures(ClientFactory client, String rGroup, int numReaders, int limit) {
         List<EventStreamReader<String>> readers = new ArrayList<>();
         for (int i = 0; i < numReaders; i++) {
-            readers.add(client.createReader(String.valueOf(i), rGroup, new JavaSerializer<>(), ReaderConfig.builder().build()));
+            readers.add(client.createReader(rGroup + "-" + String.valueOf(i), rGroup,
+                    new JavaSerializer<>(), ReaderConfig.builder().build()));
         }
 
-        return readers.stream().map(r -> CompletableFuture.supplyAsync(() -> readEvents(r, limit))).collect(toList());
+        return readers.stream().map(r -> CompletableFuture.supplyAsync(() -> readEvents(r, limit / numReaders))).collect(toList());
     }
 
     List<CompletableFuture<Integer>> readEventFutures(ClientFactory clientFactory, String readerGroup, int numReaders) {
@@ -499,13 +500,23 @@ abstract class AbstractReadWriteTest {
 
     // Private methods region
 
-    private void closeWriter(EventStreamWriter<String> writer) {
+    private <T> void closeWriter(EventStreamWriter<T> writer) {
         try {
             log.info("Closing writer");
             writer.close();
         } catch (Throwable e) {
             log.error("Error while closing writer", e);
             testState.getWriteException.compareAndSet(null, e);
+        }
+    }
+
+    private <T> void closeReader(EventStreamReader<T> reader) {
+        try {
+            log.info("Closing reader");
+            reader.close();
+        } catch (Throwable e) {
+            log.error("Error while closing reader", e);
+            testState.getReadException.compareAndSet(null, e);
         }
     }
 
@@ -522,42 +533,48 @@ abstract class AbstractReadWriteTest {
                 log.debug("Transaction with id: {} aborted", txn.getTxnId());
                 testState.abortedTxn.add(txn.getTxnId());
             } else {
-                throw new AbstractFailoverTests.TxnNotCompleteException();
+                throw new TxnNotCompleteException();
             }
 
             return CompletableFuture.completedFuture(null);
         }, executorService);
     }
 
-    private void closeReader(EventStreamReader<String> reader) {
-        try {
-            log.info("Closing reader");
-            reader.close();
-        } catch (Throwable e) {
-            log.error("Error while closing reader", e);
-            testState.getReadException.compareAndSet(null, e);
-        }
+    private <T> int readEvents(EventStreamReader<T> reader, int limit) {
+        return readEvents(reader,limit,false);
     }
 
-    private <T> int readEvents(EventStreamReader<T> reader, int limit) {
+    private <T> int readEvents(EventStreamReader<T> reader, int limit, boolean reinitializationExpected) {
         EventRead<T> event = null;
         int validEvents = 0;
-        boolean reinitializationRequired;
-        do {
-            try {
-                event = reader.readNextEvent(READ_TIMEOUT);
-                log.debug("Read event result in readEvents: {}.", event.getEvent());
-                if (event.getEvent() != null) {
-                    validEvents++;
+        boolean reinitializationRequired = false;
+        try {
+            do {
+                try {
+                    event = reader.readNextEvent(READ_TIMEOUT);
+                    log.debug("Read event result in readEvents: {}.", event.getEvent());
+                    if (event.getEvent() != null) {
+                        validEvents++;
+                    }
+                    reinitializationRequired = false;
+                } catch (ReinitializationRequiredException e) {
+                    log.error("Exception while reading event using readerId: {}", reader, e);
+                    if (reinitializationExpected) {
+                        reinitializationRequired = true;
+                    } else {
+                        fail("Reinitialization Exception is not expected");
                 }
-                reinitializationRequired = false;
-            } catch (ReinitializationRequiredException e) {
-                log.warn("Reinitialization of readers required: {}.", e);
-                reinitializationRequired = true;
+                }
             }
-        } while (reinitializationRequired || ((event.getEvent() != null || event.isCheckpoint()) && validEvents < limit));
+            while (reinitializationRequired || ((event.getEvent() != null || event.isCheckpoint()) && validEvents < limit));
+        } finally {
+            closeReader(reader);
+        }
 
-        reader.close();
         return validEvents;
+    }
+
+    static class TxnNotCompleteException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
     }
 }

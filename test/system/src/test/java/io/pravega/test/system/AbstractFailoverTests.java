@@ -38,7 +38,6 @@ abstract class AbstractFailoverTests extends AbstractReadWriteTest {
     Service segmentStoreInstance;
     URI controllerURIDirect = null;
     ScheduledExecutorService controllerExecutorService;
-    ScheduledExecutorService executorService;
 
     static URI startZookeeperInstance() {
         Service zkService = Utils.createZookeeperService();
@@ -208,9 +207,5 @@ abstract class AbstractFailoverTests extends AbstractReadWriteTest {
         }
 
         assertTrue("Scaling did not happen within desired time", scaled);
-    }
-
-    static class TxnNotCompleteException extends RuntimeException {
-        private static final long serialVersionUID = 1L;
     }
 }

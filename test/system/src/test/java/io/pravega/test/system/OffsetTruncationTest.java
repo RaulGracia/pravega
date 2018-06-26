@@ -179,9 +179,9 @@ public class OffsetTruncationTest extends AbstractReadWriteTest {
         groupManager.createReaderGroup(newGroupName, ReaderGroupConfig.builder().stream(Stream.of(SCOPE, STREAM)).build());
         futures = readEventFutures(clientFactory, newGroupName, PARALLELISM);
         Futures.allOf(futures).join();
-        assertEquals("Expected read events: ", totalEvents - (truncatedEvents * PARALLELISM),
+        assertEquals("Expected read events: ", totalEvents - truncatedEvents,
                 (int) futures.stream().map(CompletableFuture::join).reduce((a, b) -> a + b).get());
         log.debug("The stream has been successfully truncated at event {}. Offset truncation test passed.",
-                truncatedEvents * PARALLELISM);
+                truncatedEvents);
     }
 }
