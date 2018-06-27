@@ -61,8 +61,6 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
     private static final StreamConfiguration CONFIG = StreamConfiguration.builder().scope(SCOPE)
             .streamName(STREAM_NAME).scalingPolicy(SCALING_POLICY).build();
 
-    private static final ScheduledExecutorService EXECUTOR_SERVICE = Executors.newSingleThreadScheduledExecutor();
-
     @Rule
     public Timeout globalTimeout = Timeout.seconds(12 * 60);
 
@@ -112,6 +110,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
     @Before
     public void setup() throws InterruptedException, ExecutionException {
         Controller controller = getController();
+        executorService = ExecutorServiceHelpers.newScheduledThreadPool(4, "ReadWithAutoScaleTest-main");
 
         //create a scope
         Boolean createScopeStatus = controller.createScope(SCOPE).get();
@@ -133,7 +132,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
     @Test
     public void scaleTestsWithReader() {
         URI controllerUri = getControllerURI();
-        ControllerImpl controller = getController();
+        Controller controller = getController();
         testState = new TestState(true);
 
         final AtomicBoolean stopWriteFlag = new AtomicBoolean(false);
@@ -187,7 +186,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
                             } else {
                                 Assert.fail("Current number of Segments reduced to less than 2. Failure of test");
                             }
-                        }), EXECUTOR_SERVICE)
+                        }), executorService)
                 .thenCompose(v -> Futures.allOf(writers))
                 .thenCompose(v -> {
                     stopReadFlag.set(true);

@@ -156,7 +156,7 @@ public class AutoScaleTest extends AbstractScaleTests {
 
     @Test
     public void scaleTests() {
-        testState = new TestState(true);
+        testState = new TestState(false);
         CompletableFuture<Void> scaleup = scaleUpTest();
         CompletableFuture<Void> scaleDown = scaleDownTest();
         CompletableFuture<Void> scalewithTxn = scaleUpTxnTest();

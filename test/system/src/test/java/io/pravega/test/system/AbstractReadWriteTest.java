@@ -306,7 +306,7 @@ abstract class AbstractReadWriteTest {
         CompletableFuture.runAsync(() -> {
             for (int i = 0; i < writers; i++) {
                 log.info("Starting writer{}", i);
-                final EventStreamWriter<String> tmpWriter = instantiateWriter(clientFactory, stream, testState.txnWrite);
+                final EventStreamWriter<String> tmpWriter = instantiateWriter(clientFactory, stream);
                 writerList.add(tmpWriter);
                 final CompletableFuture<Void> writerFuture = startWriting(tmpWriter);
                 Futures.exceptionListener(writerFuture, t -> log.error("Error while writing events:", t));
@@ -489,15 +489,13 @@ abstract class AbstractReadWriteTest {
         }
     }
 
-    private <T extends Serializable> EventStreamWriter<T> instantiateWriter(ClientFactory clientFactory, String stream, boolean isTransaction) {
-        EventWriterConfig.EventWriterConfigBuilder writerConfig = EventWriterConfig.builder()
-                                                                                   .maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
-                                                                                   .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS);
-        if (isTransaction) {
-            writerConfig = writerConfig.transactionTimeoutTime(TRANSACTION_TIMEOUT);
-        }
-
-        return clientFactory.createEventWriter(stream, new JavaSerializer<>(), writerConfig.build());
+    private <T extends Serializable> EventStreamWriter<T> instantiateWriter(ClientFactory clientFactory, String stream) {
+        EventWriterConfig writerConfig = EventWriterConfig.builder()
+                                                          .maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
+                                                          .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS)
+                                                          .transactionTimeoutTime(TRANSACTION_TIMEOUT)
+                                                          .build();
+        return clientFactory.createEventWriter(stream, new JavaSerializer<>(), writerConfig);
     }
 
     private CompletableFuture<Void> checkTxnStatus(Transaction<String> txn, int eventsWritten) {
