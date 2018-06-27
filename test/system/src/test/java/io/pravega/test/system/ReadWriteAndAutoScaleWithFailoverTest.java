@@ -109,7 +109,6 @@ public class ReadWriteAndAutoScaleWithFailoverTest extends AbstractFailoverTests
         controller = new ControllerImpl(ControllerImplConfig.builder()
                                                             .clientConfig( ClientConfig.builder().controllerURI(controllerURIDirect).build())
                                                             .maxBackoffMillis(5000).build(),
-
                                         controllerExecutorService);
         testState = new TestState(false);
         streamManager = new StreamManagerImpl( ClientConfig.builder().controllerURI(controllerURIDirect).build());

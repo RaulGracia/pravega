@@ -84,6 +84,8 @@ abstract class AbstractReadWriteTest {
         //list of all reader's futures
         final List<CompletableFuture<Void>> readers = synchronizedList(new ArrayList<>());
         final List<CompletableFuture<Void>> writersListComplete = synchronizedList(new ArrayList<>());
+        final CompletableFuture<Void> writersComplete = new CompletableFuture<>();
+        final CompletableFuture<Void> newWritersComplete = new CompletableFuture<>();
         final CompletableFuture<Void> readersComplete = new CompletableFuture<>();
         final List<CompletableFuture<Void>> txnStatusFutureList = synchronizedList(new ArrayList<>());
         final ConcurrentSet<UUID> committingTxn = new ConcurrentSet<>();
@@ -250,7 +252,7 @@ abstract class AbstractReadWriteTest {
                     return;
                 }
             }
-            log.info("Completed writing");
+            log.info("Completed writing into txn");
             closeWriter(writer);
         }, executorService);
     }
@@ -298,6 +300,7 @@ abstract class AbstractReadWriteTest {
     }
 
     void createWriters(ClientFactory clientFactory, final int writers, String scope, String stream) {
+        testState.writersListComplete.add(0, testState.writersComplete);
         log.info("Client factory details {}", clientFactory.toString());
         log.info("Creating {} writers", writers);
         List<EventStreamWriter<String>> writerList = new ArrayList<>(writers);
@@ -354,7 +357,8 @@ abstract class AbstractReadWriteTest {
     }
 
     void addNewWriters(ClientFactory clientFactory, final int writers, String scope, String stream) {
-        Preconditions.checkNotNull(testState.writersListComplete.get(1));
+        Preconditions.checkNotNull(testState.writersListComplete.get(0));
+        testState.writersListComplete.add(testState.newWritersComplete);
         log.info("Client factory details {}", clientFactory.toString());
         log.info("Creating {} writers", writers);
         List<EventStreamWriter<String>> newlyAddedWriterList = new ArrayList<>();

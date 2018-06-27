@@ -18,7 +18,6 @@ import io.pravega.client.stream.ScalingPolicy;
 import io.pravega.client.stream.Stream;
 import io.pravega.client.stream.StreamConfiguration;
 import io.pravega.client.stream.impl.Controller;
-import io.pravega.client.stream.impl.ControllerImpl;
 import io.pravega.client.stream.impl.JavaSerializer;
 import io.pravega.common.concurrent.ExecutorServiceHelpers;
 import io.pravega.common.concurrent.Futures;
@@ -46,7 +45,6 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
-
 import static java.time.Duration.ofSeconds;
 
 @Slf4j
@@ -60,6 +58,8 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
     private static final ScalingPolicy SCALING_POLICY = ScalingPolicy.byEventRate(1, 2, 2);
     private static final StreamConfiguration CONFIG = StreamConfiguration.builder().scope(SCOPE)
             .streamName(STREAM_NAME).scalingPolicy(SCALING_POLICY).build();
+
+    private final ScheduledExecutorService scaleExecutorService = Executors.newScheduledThreadPool(5);
 
     @Rule
     public Timeout globalTimeout = Timeout.seconds(12 * 60);
@@ -126,7 +126,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
         getClientFactory().close();
         getConnectionFactory().close();
         getController().close();
-        ExecutorServiceHelpers.shutdown(executorService);
+        ExecutorServiceHelpers.shutdown(executorService, scaleExecutorService);
     }
 
     @Test
@@ -186,7 +186,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
                             } else {
                                 Assert.fail("Current number of Segments reduced to less than 2. Failure of test");
                             }
-                        }), executorService)
+                        }), scaleExecutorService)
                 .thenCompose(v -> Futures.allOf(writers))
                 .thenCompose(v -> {
                     stopReadFlag.set(true);

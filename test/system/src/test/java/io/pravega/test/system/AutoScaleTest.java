@@ -33,6 +33,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
@@ -60,6 +62,8 @@ public class AutoScaleTest extends AbstractScaleTests {
 
     private static final StreamConfiguration CONFIG_DOWN = StreamConfiguration.builder().scope(SCOPE)
             .streamName(SCALE_DOWN_STREAM_NAME).scalingPolicy(SCALING_POLICY).build();
+
+    private final ScheduledExecutorService scaleExecutorService = Executors.newScheduledThreadPool(5);
 
     //The execution time for @Before + @After + @Test methods should be less than 10 mins. Else the test will timeout.
     @Rule
@@ -119,7 +123,7 @@ public class AutoScaleTest extends AbstractScaleTests {
 
         //create a scope
         Controller controller = getController();
-        executorService = ExecutorServiceHelpers.newScheduledThreadPool(4, "AutoScaleTest-main");
+        executorService = ExecutorServiceHelpers.newScheduledThreadPool(5, "AutoScaleTest-main");
         Boolean createScopeStatus = controller.createScope(SCOPE).get();
         log.debug("create scope status {}", createScopeStatus);
 
@@ -151,7 +155,7 @@ public class AutoScaleTest extends AbstractScaleTests {
         getClientFactory().close();
         getConnectionFactory().close();
         getController().close();
-        ExecutorServiceHelpers.shutdown(executorService);
+        ExecutorServiceHelpers.shutdown(executorService, scaleExecutorService);
     }
 
     @Test
@@ -196,12 +200,12 @@ public class AutoScaleTest extends AbstractScaleTests {
                                 log.info("scale up done successfully");
                                 exit.set(true);
                             }
-                        }), executorService);
+                        }), scaleExecutorService);
     }
 
     /**
      * Invoke the simple scale down Test, produce no into a stream.
-     * The test will periodically check if a scale event has occured by talking to controller via
+     * The test will periodically check if a scale event has occurred by talking to controller via
      * controller client.
      *
      * @throws InterruptedException if interrupted
@@ -221,15 +225,13 @@ public class AutoScaleTest extends AbstractScaleTests {
                             } else {
                                 log.info("scale down done successfully");
                             }
-                        }), executorService);
+                        }), scaleExecutorService);
     }
 
     /**
-     * Invoke the scale up Test with transactional writes. Produce traffic from multiple writers in parallel.
-     * Each writer writes using transactions.
-     * Transactions are committed quickly to give
-     * The test will periodically check if a scale event has occured by talking to controller via
-     * controller client.
+     * Invoke the scale up Test with transactional writes. Produce traffic from multiple writers in parallel. Each
+     * writer writes using transactions. The test will periodically check if a scale event has occurred by talking to
+     * controller via controller client.
      *
      * @throws InterruptedException if interrupted
      * @throws URISyntaxException   If URI is invalid
@@ -253,6 +255,6 @@ public class AutoScaleTest extends AbstractScaleTests {
                                 log.info("txn test scale up done successfully");
                                 exit.set(true);
                             }
-                        }), executorService);
+                        }), scaleExecutorService);
     }
 }

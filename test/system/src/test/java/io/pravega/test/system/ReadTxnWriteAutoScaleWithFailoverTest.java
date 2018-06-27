@@ -120,11 +120,6 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
 
     @After
     public void tearDown() throws ExecutionException {
-        testState.stopReadFlag.set(true);
-        testState.stopWriteFlag.set(true);
-        testState.checkForAnomalies();
-        //interrupt writers and readers threads if they are still running.
-        testState.cancelAllPendingWork();
         streamManager.close();
         clientFactory.close();
         readerGroupManager.close();
@@ -172,6 +167,10 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
             log.info("Test ReadTxnWriteAutoScaleWithFailover succeeds");
         } finally {
             testState.checkForAnomalies();
+            testState.stopReadFlag.set(true);
+            testState.stopWriteFlag.set(true);
+            //interrupt writers and readers threads if they are still running.
+            testState.cancelAllPendingWork();
         }
     }
 
