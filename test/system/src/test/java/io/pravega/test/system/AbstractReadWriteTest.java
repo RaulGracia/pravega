@@ -22,18 +22,17 @@ import io.pravega.client.stream.ReaderGroupConfig;
 import io.pravega.client.stream.ReinitializationRequiredException;
 import io.pravega.client.stream.Stream;
 import io.pravega.client.stream.Transaction;
-import io.pravega.client.stream.impl.Controller;
 import io.pravega.client.stream.impl.JavaSerializer;
 import io.pravega.common.Exceptions;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.util.Retry;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -43,9 +42,8 @@ import lombok.extern.slf4j.Slf4j;
 import static java.util.Collections.synchronizedList;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static java.util.stream.Collectors.toList;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.fail;
 
 /**
@@ -67,8 +65,13 @@ abstract class AbstractReadWriteTest {
     final String readerName = "reader";
     ScheduledExecutorService executorService;
     TestState testState;
-    Controller controller;
 
+    /**
+     * This class encapsulates the information regarding the execution of a system test. This includes the references to
+     * readers and writers, the number of events read/written, the exceptions occurred on readers/writers through the
+     * test's execution, and the flags to stop the execution of readers/writers. It also contains logic to perform some
+     * validation logic on the events processed.
+     */
     static class TestState {
         //read and write count variables
         final AtomicBoolean stopReadFlag = new AtomicBoolean(false);
@@ -81,8 +84,6 @@ abstract class AbstractReadWriteTest {
         //list of all reader's futures
         final List<CompletableFuture<Void>> readers = synchronizedList(new ArrayList<>());
         final List<CompletableFuture<Void>> writersListComplete = synchronizedList(new ArrayList<>());
-        final CompletableFuture<Void> writersComplete = new CompletableFuture<>();
-        final CompletableFuture<Void> newWritersComplete = new CompletableFuture<>();
         final CompletableFuture<Void> readersComplete = new CompletableFuture<>();
         final List<CompletableFuture<Void>> txnStatusFutureList = synchronizedList(new ArrayList<>());
         final ConcurrentSet<UUID> committingTxn = new ConcurrentSet<>();
@@ -196,6 +197,7 @@ abstract class AbstractReadWriteTest {
                     testState.getWriteException.set(e);
                 }
             }
+            log.info("Completed writing");
             closeWriter(writer);
         }, executorService);
     }
@@ -248,6 +250,7 @@ abstract class AbstractReadWriteTest {
                     return;
                 }
             }
+            log.info("Completed writing");
             closeWriter(writer);
         }, executorService);
     }
@@ -294,20 +297,7 @@ abstract class AbstractReadWriteTest {
         }, executorService);
     }
 
-    void waitForTxnsToComplete() {
-        log.info("Wait for txns to complete");
-        if (!Futures.await(Futures.allOf(testState.txnStatusFutureList))) {
-            log.error("Transaction futures did not complete with exceptions");
-        }
-        // check for exceptions during transaction commits
-        if (testState.getTxnWriteException.get() != null) {
-            log.info("Unable to commit transaction:", testState.getTxnWriteException.get());
-            fail("Unable to commit transaction. Test failure");
-        }
-    }
-
     void createWriters(ClientFactory clientFactory, final int writers, String scope, String stream) {
-        Preconditions.checkNotNull(testState.writersListComplete.get(0));
         log.info("Client factory details {}", clientFactory.toString());
         log.info("Creating {} writers", writers);
         List<EventStreamWriter<String>> writerList = new ArrayList<>(writers);
@@ -316,33 +306,15 @@ abstract class AbstractReadWriteTest {
         CompletableFuture.runAsync(() -> {
             for (int i = 0; i < writers; i++) {
                 log.info("Starting writer{}", i);
-
-                if (!testState.txnWrite) {
-                    final EventStreamWriter<String> tmpWriter = clientFactory.createEventWriter(stream,
-                            new JavaSerializer<>(),
-                            EventWriterConfig.builder().maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
-                                             .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS).build());
-                    writerList.add(tmpWriter);
-                    final CompletableFuture<Void> writerFuture = startWriting(tmpWriter);
-                    Futures.exceptionListener(writerFuture, t -> log.error("Error while writing events:", t));
-                    writerFutureList.add(writerFuture);
-                } else  {
-                    final EventStreamWriter<String> tmpWriter = clientFactory.createEventWriter(stream,
-                            new JavaSerializer<>(),
-                            EventWriterConfig.builder().maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
-                                             .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS)
-                                             .transactionTimeoutTime(TRANSACTION_TIMEOUT).build());
-                    writerList.add(tmpWriter);
-                    final CompletableFuture<Void> txnWriteFuture = startWritingIntoTxn(tmpWriter);
-                    Futures.exceptionListener(txnWriteFuture, t -> log.error("Error while writing events into transaction:", t));
-                    writerFutureList.add(txnWriteFuture);
-                }
-
+                final EventStreamWriter<String> tmpWriter = instantiateWriter(clientFactory, stream, testState.txnWrite);
+                writerList.add(tmpWriter);
+                final CompletableFuture<Void> writerFuture = startWriting(tmpWriter);
+                Futures.exceptionListener(writerFuture, t -> log.error("Error while writing events:", t));
+                writerFutureList.add(writerFuture);
             }
         }, executorService).thenRun(() -> {
             testState.writers.addAll(writerFutureList);
-            Futures.completeAfter(() -> Futures.allOf(writerFutureList),
-                    testState.writersListComplete.get(0));
+            Futures.completeAfter(() -> Futures.allOf(writerFutureList), testState.writersListComplete.get(0));
             Futures.exceptionListener(testState.writersListComplete.get(0),
                     t -> log.error("Exception while waiting for writers to complete", t));
         });
@@ -420,6 +392,18 @@ abstract class AbstractReadWriteTest {
         });
     }
 
+    void waitForTxnsToComplete() {
+        log.info("Wait for txns to complete");
+        if (!Futures.await(Futures.allOf(testState.txnStatusFutureList))) {
+            log.error("Transaction futures did not complete with exceptions");
+        }
+        // check for exceptions during transaction commits
+        if (testState.getTxnWriteException.get() != null) {
+            log.info("Unable to commit transaction:", testState.getTxnWriteException.get());
+            fail("Unable to commit transaction. Test failure");
+        }
+    }
+
     void stopWriters() {
         //Stop Writers
         log.info("Stop write flag status {}", testState.stopWriteFlag);
@@ -457,21 +441,6 @@ abstract class AbstractReadWriteTest {
         log.info("All writers and readers have stopped. Event Written Count:{}, Event Read " +
                 "Count: {}", testState.getEventWrittenCount(), testState.getEventReadCount());
         assertEquals(testState.getEventWrittenCount(), testState.getEventReadCount());
-    }
-
-    void cleanUp(String scope, String stream, ReaderGroupManager readerGroupManager, String readerGroupName) throws InterruptedException, ExecutionException {
-        CompletableFuture<Boolean> sealStreamStatus = Retry.indefinitelyWithExpBackoff("Failed to seal stream. retrying ...")
-                                                           .runAsync(() -> controller.sealStream(scope, stream), executorService);
-        log.info("Sealing stream {}", stream);
-        assertTrue(sealStreamStatus.get());
-        CompletableFuture<Boolean> deleteStreamStatus = controller.deleteStream(scope, stream);
-        log.info("Deleting stream {}", stream);
-        assertTrue(deleteStreamStatus.get());
-        log.info("Deleting readergroup {}", readerGroupName);
-        readerGroupManager.deleteReaderGroup(readerGroupName);
-        CompletableFuture<Boolean> deleteScopeStatus = controller.deleteScope(scope);
-        log.info("Deleting scope {}", scope);
-        assertTrue(deleteScopeStatus.get());
     }
 
     void writeEvents(ClientFactory clientFactory, String streamName, int totalEvents) {
@@ -520,6 +489,17 @@ abstract class AbstractReadWriteTest {
         }
     }
 
+    private <T extends Serializable> EventStreamWriter<T> instantiateWriter(ClientFactory clientFactory, String stream, boolean isTransaction) {
+        EventWriterConfig.EventWriterConfigBuilder writerConfig = EventWriterConfig.builder()
+                                                                                   .maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
+                                                                                   .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS);
+        if (isTransaction) {
+            writerConfig = writerConfig.transactionTimeoutTime(TRANSACTION_TIMEOUT);
+        }
+
+        return clientFactory.createEventWriter(stream, new JavaSerializer<>(), writerConfig.build());
+    }
+
     private CompletableFuture<Void> checkTxnStatus(Transaction<String> txn, int eventsWritten) {
         testState.committingTxn.add(txn.getTxnId());
         return Retry.indefinitelyWithExpBackoff("Txn did not get committed").runAsync(() -> {
@@ -563,10 +543,9 @@ abstract class AbstractReadWriteTest {
                         reinitializationRequired = true;
                     } else {
                         fail("Reinitialization Exception is not expected");
+                    }
                 }
-                }
-            }
-            while (reinitializationRequired || ((event.getEvent() != null || event.isCheckpoint()) && validEvents < limit));
+            } while (reinitializationRequired || ((event.getEvent() != null || event.isCheckpoint()) && validEvents < limit));
         } finally {
             closeReader(reader);
         }

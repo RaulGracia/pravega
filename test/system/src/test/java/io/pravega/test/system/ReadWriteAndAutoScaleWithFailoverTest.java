@@ -112,8 +112,6 @@ public class ReadWriteAndAutoScaleWithFailoverTest extends AbstractFailoverTests
 
                                         controllerExecutorService);
         testState = new TestState(false);
-        testState.writersListComplete.add(0, testState.writersComplete);
-        testState.writersListComplete.add(1, testState.newWritersComplete);
         streamManager = new StreamManagerImpl( ClientConfig.builder().controllerURI(controllerURIDirect).build());
         createScopeAndStream(scope, AUTO_SCALE_STREAM, config, streamManager);
         log.info("Scope passed to client factory {}", scope);

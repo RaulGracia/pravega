@@ -181,7 +181,6 @@ public class OffsetTruncationTest extends AbstractReadWriteTest {
         Futures.allOf(futures).join();
         assertEquals("Expected read events: ", totalEvents - truncatedEvents,
                 (int) futures.stream().map(CompletableFuture::join).reduce((a, b) -> a + b).get());
-        log.debug("The stream has been successfully truncated at event {}. Offset truncation test passed.",
-                truncatedEvents);
+        log.debug("The stream has been successfully truncated at event {}. Offset truncation test passed.", truncatedEvents);
     }
 }

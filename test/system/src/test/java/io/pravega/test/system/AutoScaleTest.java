@@ -17,6 +17,7 @@ import io.pravega.client.stream.impl.Controller;
 import io.pravega.client.stream.impl.ControllerImpl;
 import io.pravega.client.stream.impl.JavaSerializer;
 import io.pravega.client.stream.impl.StreamImpl;
+import io.pravega.common.concurrent.ExecutorServiceHelpers;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.util.Retry;
 import io.pravega.test.system.framework.Environment;
@@ -32,10 +33,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -60,14 +60,13 @@ public class AutoScaleTest extends AbstractScaleTests {
 
     private static final StreamConfiguration CONFIG_DOWN = StreamConfiguration.builder().scope(SCOPE)
             .streamName(SCALE_DOWN_STREAM_NAME).scalingPolicy(SCALING_POLICY).build();
-    private static final ScheduledExecutorService EXECUTOR_SERVICE = Executors.newScheduledThreadPool(5);
 
     //The execution time for @Before + @After + @Test methods should be less than 10 mins. Else the test will timeout.
     @Rule
     public Timeout globalTimeout = Timeout.seconds(10 * 60);
 
     @Environment
-    public static void setup() {
+    public static void initialize() {
 
         //1. check if zk is running, if not start it
         Service zkService = Utils.createZookeeperService();
@@ -116,11 +115,11 @@ public class AutoScaleTest extends AbstractScaleTests {
      * @throws ExecutionException   if error in create stream
      */
     @Before
-    public void createStream() throws InterruptedException, ExecutionException {
+    public void setup() throws InterruptedException, ExecutionException {
 
         //create a scope
         Controller controller = getController();
-
+        executorService = ExecutorServiceHelpers.newScheduledThreadPool(4, "AutoScaleTest-main");
         Boolean createScopeStatus = controller.createScope(SCOPE).get();
         log.debug("create scope status {}", createScopeStatus);
 
@@ -140,11 +139,19 @@ public class AutoScaleTest extends AbstractScaleTests {
         Boolean status = controller.scaleStream(new StreamImpl(SCOPE, SCALE_DOWN_STREAM_NAME),
                 Collections.singletonList(0L),
                 keyRanges,
-                EXECUTOR_SERVICE).getFuture().get();
+                executorService).getFuture().get();
         assertTrue(status);
 
         createStreamStatus = controller.createStream(CONFIG_TXN).get();
         log.debug("create stream status for txn stream {}", createStreamStatus);
+    }
+
+    @After
+    public void tearDown() {
+        getClientFactory().close();
+        getConnectionFactory().close();
+        getController().close();
+        ExecutorServiceHelpers.shutdown(executorService);
     }
 
     @Test
@@ -164,7 +171,7 @@ public class AutoScaleTest extends AbstractScaleTests {
 
     /**
      * Invoke the simple scale up Test, produce traffic from multiple writers in parallel.
-     * The test will periodically check if a scale event has occured by talking to controller via
+     * The test will periodically check if a scale event has occurred by talking to controller via
      * controller client.
      *
      * @throws InterruptedException if interrupted
@@ -189,7 +196,7 @@ public class AutoScaleTest extends AbstractScaleTests {
                                 log.info("scale up done successfully");
                                 exit.set(true);
                             }
-                        }), EXECUTOR_SERVICE);
+                        }), executorService);
     }
 
     /**
@@ -214,7 +221,7 @@ public class AutoScaleTest extends AbstractScaleTests {
                             } else {
                                 log.info("scale down done successfully");
                             }
-                        }), EXECUTOR_SERVICE);
+                        }), executorService);
     }
 
     /**
@@ -246,6 +253,6 @@ public class AutoScaleTest extends AbstractScaleTests {
                                 log.info("txn test scale up done successfully");
                                 exit.set(true);
                             }
-                        }), EXECUTOR_SERVICE);
+                        }), executorService);
     }
 }

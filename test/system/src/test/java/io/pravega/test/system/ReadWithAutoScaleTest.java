@@ -20,6 +20,7 @@ import io.pravega.client.stream.StreamConfiguration;
 import io.pravega.client.stream.impl.Controller;
 import io.pravega.client.stream.impl.ControllerImpl;
 import io.pravega.client.stream.impl.JavaSerializer;
+import io.pravega.common.concurrent.ExecutorServiceHelpers;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.hash.RandomFactory;
 import io.pravega.common.util.Retry;
@@ -38,6 +39,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.Cleanup;
 import lombok.extern.slf4j.Slf4j;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -65,7 +67,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
     public Timeout globalTimeout = Timeout.seconds(12 * 60);
 
     @Environment
-    public static void setup() {
+    public static void initialize() {
 
         //1. check if zk is running, if not start it
         Service zkService = Utils.createZookeeperService();
@@ -108,8 +110,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
      * @throws ExecutionException   if error in create stream
      */
     @Before
-    public void createStream() throws InterruptedException, ExecutionException {
-
+    public void setup() throws InterruptedException, ExecutionException {
         Controller controller = getController();
 
         //create a scope
@@ -119,6 +120,14 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
         //create a stream
         Boolean createStreamStatus = controller.createStream(CONFIG).get();
         log.debug("Create stream status {}", createStreamStatus);
+    }
+
+    @After
+    public void tearDown() {
+        getClientFactory().close();
+        getConnectionFactory().close();
+        getController().close();
+        ExecutorServiceHelpers.shutdown(executorService);
     }
 
     @Test
@@ -186,7 +195,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
                             "Count: {}", testState.writtenEvents, testState.readEvents);
                     return CompletableFuture.allOf(reader1, reader2);
                 })
-                .thenRun(() -> validateResults());
+                .thenRun(this::validateResults);
 
         Futures.getAndHandleExceptions(testResult
                 .whenComplete((r, e) -> {

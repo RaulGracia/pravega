@@ -192,5 +192,4 @@ public class PravegaTest {
         reader.close();
         groupManager.deleteReaderGroup(READER_GROUP);
     }
-
 }

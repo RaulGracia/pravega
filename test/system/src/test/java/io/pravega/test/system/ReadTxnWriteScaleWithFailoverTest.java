@@ -117,7 +117,6 @@ public class ReadTxnWriteScaleWithFailoverTest extends AbstractFailoverTests {
                                     .maxBackoffMillis(5000).build(),
                 controllerExecutorService);
         testState = new TestState(true);
-        testState.writersListComplete.add(0, testState.writersComplete);
         streamManager = new StreamManagerImpl(ClientConfig.builder().controllerURI(controllerURIDirect).build());
         createScopeAndStream(scope, stream, config, streamManager);
         log.info("Scope passed to client factory {}", scope);

@@ -72,7 +72,6 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
         startPravegaSegmentStoreInstances(zkUri, controllerUri);
     }
 
-
     @Before
     public void setup() {
         // Get zk details to verify if controller, segmentstore are running
@@ -112,8 +111,6 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
                                          .maxBackoffMillis(5000).build(),
                 controllerExecutorService);
         testState = new TestState(true);
-        testState.writersListComplete.add(0, testState.writersComplete);
-        testState.writersListComplete.add(1, testState.newWritersComplete);
         streamManager = new StreamManagerImpl( ClientConfig.builder().controllerURI(controllerURIDirect).build());
         createScopeAndStream(scope, stream, config, streamManager);
         log.info("Scope passed to client factory {}", scope);

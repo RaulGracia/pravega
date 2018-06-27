@@ -9,16 +9,20 @@
  */
 package io.pravega.test.system;
 
+import io.pravega.client.admin.ReaderGroupManager;
 import io.pravega.client.admin.StreamManager;
 import io.pravega.client.segment.impl.Segment;
 import io.pravega.client.stream.StreamConfiguration;
+import io.pravega.client.stream.impl.Controller;
 import io.pravega.client.stream.impl.StreamSegments;
 import io.pravega.common.Exceptions;
 import io.pravega.common.concurrent.Futures;
+import io.pravega.common.util.Retry;
 import io.pravega.test.system.framework.Utils;
 import io.pravega.test.system.framework.services.Service;
 import java.net.URI;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
@@ -37,6 +41,7 @@ abstract class AbstractFailoverTests extends AbstractReadWriteTest {
     Service controllerInstance;
     Service segmentStoreInstance;
     URI controllerURIDirect = null;
+    Controller controller;
     ScheduledExecutorService controllerExecutorService;
 
     static URI startZookeeperInstance() {
@@ -191,6 +196,21 @@ abstract class AbstractFailoverTests extends AbstractReadWriteTest {
         log.debug("Create scope status {}", createScopeStatus);
         Boolean createStreamStatus = streamManager.createStream(scope, stream, config);
         log.debug("Create stream status {}", createStreamStatus);
+    }
+
+    void cleanUp(String scope, String stream, ReaderGroupManager readerGroupManager, String readerGroupName) throws InterruptedException, ExecutionException {
+        CompletableFuture<Boolean> sealStreamStatus = Retry.indefinitelyWithExpBackoff("Failed to seal stream. retrying ...")
+                                                           .runAsync(() -> controller.sealStream(scope, stream), executorService);
+        log.info("Sealing stream {}", stream);
+        assertTrue(sealStreamStatus.get());
+        CompletableFuture<Boolean> deleteStreamStatus = controller.deleteStream(scope, stream);
+        log.info("Deleting stream {}", stream);
+        assertTrue(deleteStreamStatus.get());
+        log.info("Deleting readergroup {}", readerGroupName);
+        readerGroupManager.deleteReaderGroup(readerGroupName);
+        CompletableFuture<Boolean> deleteScopeStatus = controller.deleteScope(scope);
+        log.info("Deleting scope {}", scope);
+        assertTrue(deleteScopeStatus.get());
     }
 
     void waitForScaling(String scope, String stream, StreamConfiguration initialConfig) {
