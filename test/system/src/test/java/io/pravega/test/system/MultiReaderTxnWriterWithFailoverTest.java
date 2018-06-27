@@ -119,7 +119,6 @@ public class MultiReaderTxnWriterWithFailoverTest extends AbstractFailoverTests 
     public void tearDown() throws ExecutionException {
         testState.stopReadFlag.set(true);
         testState.stopWriteFlag.set(true);
-        testState.checkForAnomalies();
         //interrupt writers and readers threads if they are still running.
         testState.cancelAllPendingWork();
         streamManager.close();
