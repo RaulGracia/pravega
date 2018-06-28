@@ -57,7 +57,7 @@ import static org.junit.Assert.fail;
 
 @Slf4j
 @RunWith(SystemTestRunner.class)
-public class ReaderCheckpointTest {
+public class ReaderCheckpointTest extends AbstractReadWriteTest {
 
     private static final long READ_TIMEOUT = SECONDS.toMillis(30);
     private static final int RANDOM_SUFFIX = RandomFactory.create().nextInt(Integer.MAX_VALUE);
@@ -131,44 +131,44 @@ public class ReaderCheckpointTest {
                 ReaderGroupConfig.builder().stream(io.pravega.client.stream.Stream.of(SCOPE, STREAM)).build());
         @Cleanup
         ReaderGroup readerGroup = readerGroupManager.getReaderGroup(READER_GROUP_NAME);
+        @Cleanup
+        ClientFactory clientFactory = ClientFactory.withScope(SCOPE, controllerURI);
 
         int startInclusive = 1;
-        int endExclusive = 100;
-        log.info("Write events with range [{},{})", startInclusive, endExclusive);
-        writeEvents(IntStream.range(startInclusive, endExclusive).boxed().collect(Collectors.toList()));
-        readEventsAndVerify(startInclusive, endExclusive);
+        int numEvents = 100;
+        log.info("Write events with range [{},{})", startInclusive, startInclusive + numEvents);
+        writeEvents(clientFactory, STREAM, numEvents, startInclusive);
+        readEventsAndVerify(startInclusive, startInclusive + numEvents);
 
         //initiate checkpoint100
         Checkpoint checkPoint100 = createCheckPointAndVerify(readerGroup, "batch100");
 
         //write and read events 100 to 200
         startInclusive = 100;
-        endExclusive = 200;
-        log.info("Write events with range [{},{})", startInclusive, endExclusive);
-        writeEvents(IntStream.range(startInclusive, endExclusive).boxed().collect(Collectors.toList()));
-        readEventsAndVerify(startInclusive, endExclusive);
+        log.info("Write events with range [{},{})", startInclusive, startInclusive + numEvents);
+        writeEvents(clientFactory, STREAM, numEvents, startInclusive);
+        readEventsAndVerify(startInclusive, startInclusive + numEvents);
 
         //reset to check point 100
         readerGroup.resetReaderGroup(ReaderGroupConfig.builder().startFromCheckpoint(checkPoint100).build());
-        readEventsAndVerify(100, endExclusive);
+        readEventsAndVerify(100, startInclusive + numEvents);
 
         //initiate checkpoint200
         Checkpoint checkPoint200 = createCheckPointAndVerify(readerGroup, "batch200");
 
         //write and read events 200 to 300
         startInclusive = 200;
-        endExclusive = 300;
-        log.info("Write events with range [{},{})", startInclusive, endExclusive);
-        writeEvents(IntStream.range(startInclusive, endExclusive).boxed().collect(Collectors.toList()));
-        readEventsAndVerify(startInclusive, endExclusive);
+        log.info("Write events with range [{},{})", startInclusive, startInclusive + numEvents);
+        writeEvents(clientFactory, STREAM, numEvents, startInclusive);
+        readEventsAndVerify(startInclusive, startInclusive + numEvents);
 
         //reset back to checkpoint 200
         readerGroup.resetReaderGroup(ReaderGroupConfig.builder().startFromCheckpoint(checkPoint200).build());
-        readEventsAndVerify(200, endExclusive);
+        readEventsAndVerify(200, startInclusive + numEvents);
 
         //reset back to checkpoint 100
         readerGroup.resetReaderGroup(ReaderGroupConfig.builder().startFromCheckpoint(checkPoint100).build());
-        readEventsAndVerify(100, endExclusive);
+        readEventsAndVerify(100, startInclusive + numEvents);
 
         readerGroupManager.deleteReaderGroup(READER_GROUP_NAME); //clean up
     }
@@ -264,19 +264,6 @@ public class ReaderCheckpointTest {
             log.info("No more events from {}/{} for readerId: {}", SCOPE, STREAM, readerId);
         } //reader.close() will automatically invoke ReaderGroup#readerOffline(String, Position)
         return events;
-    }
-
-    private <T extends Serializable> void writeEvents(final List<T> events) {
-        try (ClientFactory clientFactory = ClientFactory.withScope(SCOPE, controllerURI);
-             EventStreamWriter<T> writer = clientFactory.createEventWriter(STREAM,
-                     new JavaSerializer<T>(),
-                     EventWriterConfig.builder().build())) {
-            for (T event : events) {
-                String routingKey = String.valueOf(event);
-                log.info("Writing message: {} with routing-key: {} to stream {}", event, routingKey, STREAM);
-                writer.writeEvent(routingKey, event);
-            }
-        }
     }
 
     private URI fetchControllerURI() {

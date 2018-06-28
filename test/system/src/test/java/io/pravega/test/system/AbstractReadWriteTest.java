@@ -389,10 +389,14 @@ abstract class AbstractReadWriteTest {
     }
 
     void writeEvents(ClientFactory clientFactory, String streamName, int totalEvents) {
+        writeEvents(clientFactory, streamName, totalEvents, 0);
+    }
+
+    void writeEvents(ClientFactory clientFactory, String streamName, int totalEvents, int initialPoint) {
         @Cleanup
         EventStreamWriter<String> writer = clientFactory.createEventWriter(streamName, new JavaSerializer<>(),
                 EventWriterConfig.builder().build());
-        for (int i = 0; i < totalEvents; i++) {
+        for (int i = initialPoint; i < totalEvents + initialPoint; i++) {
             writer.writeEvent(String.valueOf(i)).join();
             log.debug("Writing event: {} to stream {}.", streamName + String.valueOf(i), streamName);
         }
