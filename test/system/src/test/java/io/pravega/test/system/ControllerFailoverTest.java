@@ -53,7 +53,7 @@ public class ControllerFailoverTest {
     private URI controllerURIDirect = null;
 
     @Environment
-    public static void setup() throws MarathonException, ExecutionException {
+    public static void initialize() throws MarathonException, ExecutionException {
 
         //1. check if zk is running, if not start it
         Service zkService = Utils.createZookeeperService();

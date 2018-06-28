@@ -204,10 +204,6 @@ abstract class AbstractReadWriteTest {
         }, executorService);
     }
 
-    CompletableFuture<Void> startWritingIntoTxn(final EventStreamWriter<String> writer) {
-        return startWritingIntoTxn(writer, testState.stopWriteFlag);
-    }
-
     CompletableFuture<Void> startWritingIntoTxn(final EventStreamWriter<String> writer, AtomicBoolean stopFlag) {
         return CompletableFuture.runAsync(() -> {
             while (!stopFlag.get()) {
@@ -299,30 +295,6 @@ abstract class AbstractReadWriteTest {
         }, executorService);
     }
 
-    void createWriters(ClientFactory clientFactory, final int writers, String scope, String stream) {
-        testState.writersListComplete.add(0, testState.writersComplete);
-        log.info("Client factory details {}", clientFactory.toString());
-        log.info("Creating {} writers", writers);
-        List<EventStreamWriter<String>> writerList = new ArrayList<>(writers);
-        List<CompletableFuture<Void>> writerFutureList = new ArrayList<>();
-        log.info("Writers writing in the scope {}", scope);
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < writers; i++) {
-                log.info("Starting writer{}", i);
-                final EventStreamWriter<String> tmpWriter = instantiateWriter(clientFactory, stream);
-                writerList.add(tmpWriter);
-                final CompletableFuture<Void> writerFuture = startWriting(tmpWriter);
-                Futures.exceptionListener(writerFuture, t -> log.error("Error while writing events:", t));
-                writerFutureList.add(writerFuture);
-            }
-        }, executorService).thenRun(() -> {
-            testState.writers.addAll(writerFutureList);
-            Futures.completeAfter(() -> Futures.allOf(writerFutureList), testState.writersListComplete.get(0));
-            Futures.exceptionListener(testState.writersListComplete.get(0),
-                    t -> log.error("Exception while waiting for writers to complete", t));
-        });
-    }
-
     void createReaders(ClientFactory clientFactory, String readerGroupName, String scope,
                        ReaderGroupManager readerGroupManager, String stream, final int readers) {
         log.info("Creating Reader group: {}, with readergroup manager using scope: {}", readerGroupName, scope);
@@ -356,44 +328,13 @@ abstract class AbstractReadWriteTest {
         });
     }
 
+    void createWriters(ClientFactory clientFactory, final int writers, String scope, String stream) {
+        createWritersInternal(clientFactory, writers, scope, stream, testState.writersComplete);
+    }
+
     void addNewWriters(ClientFactory clientFactory, final int writers, String scope, String stream) {
         Preconditions.checkNotNull(testState.writersListComplete.get(0));
-        testState.writersListComplete.add(testState.newWritersComplete);
-        log.info("Client factory details {}", clientFactory.toString());
-        log.info("Creating {} writers", writers);
-        List<EventStreamWriter<String>> newlyAddedWriterList = new ArrayList<>();
-        List<CompletableFuture<Void>> newWritersFutureList = new ArrayList<>();
-        log.info("Writers writing in the scope {}", scope);
-        CompletableFuture.runAsync(() -> {
-            for (int i = 0; i < writers; i++) {
-                log.info("Starting writer{}", i);
-                if (!testState.txnWrite) {
-                    final EventStreamWriter<String> tmpWriter = clientFactory.createEventWriter(stream,
-                            new JavaSerializer<>(),
-                            EventWriterConfig.builder().maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
-                                             .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS).build());
-                    newlyAddedWriterList.add(tmpWriter);
-                    final CompletableFuture<Void> writerFuture = startWriting(tmpWriter);
-                    Futures.exceptionListener(writerFuture, t -> log.error("Error while writing events:", t));
-                    newWritersFutureList.add(writerFuture);
-                } else  {
-                    final EventStreamWriter<String> tmpWriter = clientFactory.createEventWriter(stream,
-                            new JavaSerializer<>(),
-                            EventWriterConfig.builder().maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
-                                             .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS)
-                                             .transactionTimeoutTime(TRANSACTION_TIMEOUT).build());
-                    newlyAddedWriterList.add(tmpWriter);
-                    final CompletableFuture<Void> txnWriteFuture = startWritingIntoTxn(tmpWriter);
-                    Futures.exceptionListener(txnWriteFuture, t -> log.error("Error while writing events into transaction:", t));
-                    newWritersFutureList.add(txnWriteFuture);
-                }
-            }
-        }, executorService).thenRun(() -> {
-            testState.writers.addAll(newWritersFutureList);
-            Futures.completeAfter(() -> Futures.allOf(newWritersFutureList), testState.writersListComplete.get(1));
-            Futures.exceptionListener(testState.writersListComplete.get(1),
-                    t -> log.error("Exception while waiting for writers to complete", t));
-        });
+        createWritersInternal(clientFactory, writers, scope, stream, testState.newWritersComplete);
     }
 
     void waitForTxnsToComplete() {
@@ -473,6 +414,36 @@ abstract class AbstractReadWriteTest {
 
     // Private methods region
 
+    private void createWritersInternal(ClientFactory clientFactory, final int writers, String scope, String stream, CompletableFuture<Void> writersComplete) {
+        testState.writersListComplete.add(writersComplete);
+        log.info("Client factory details {}", clientFactory.toString());
+        log.info("Creating {} writers", writers);
+        List<CompletableFuture<Void>> writerFutureList = new ArrayList<>();
+        log.info("Writers writing in the scope {}", scope);
+        CompletableFuture.runAsync(() -> {
+            for (int i = 0; i < writers; i++) {
+                log.info("Starting writer{}", i);
+                final EventStreamWriter<String> tmpWriter = instantiateWriter(clientFactory, stream);
+                final CompletableFuture<Void> writerFuture = startWriting(tmpWriter);
+                Futures.exceptionListener(writerFuture, t -> log.error("Error while writing events:", t));
+                writerFutureList.add(writerFuture);
+            }
+        }, executorService).thenRun(() -> {
+            testState.writers.addAll(writerFutureList);
+            Futures.completeAfter(() -> Futures.allOf(writerFutureList), writersComplete);
+            Futures.exceptionListener(writersComplete, t -> log.error("Exception while waiting for writers to complete", t));
+        });
+    }
+
+    private <T extends Serializable> EventStreamWriter<T> instantiateWriter(ClientFactory clientFactory, String stream) {
+        EventWriterConfig writerConfig = EventWriterConfig.builder()
+                                                          .maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
+                                                          .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS)
+                                                          .transactionTimeoutTime(TRANSACTION_TIMEOUT)
+                                                          .build();
+        return clientFactory.createEventWriter(stream, new JavaSerializer<>(), writerConfig);
+    }
+
     private <T> void closeWriter(EventStreamWriter<T> writer) {
         try {
             log.info("Closing writer");
@@ -491,15 +462,6 @@ abstract class AbstractReadWriteTest {
             log.error("Error while closing reader", e);
             testState.getReadException.compareAndSet(null, e);
         }
-    }
-
-    private <T extends Serializable> EventStreamWriter<T> instantiateWriter(ClientFactory clientFactory, String stream) {
-        EventWriterConfig writerConfig = EventWriterConfig.builder()
-                                                          .maxBackoffMillis(WRITER_MAX_BACKOFF_MILLIS)
-                                                          .retryAttempts(WRITER_MAX_RETRY_ATTEMPTS)
-                                                          .transactionTimeoutTime(TRANSACTION_TIMEOUT)
-                                                          .build();
-        return clientFactory.createEventWriter(stream, new JavaSerializer<>(), writerConfig);
     }
 
     private CompletableFuture<Void> checkTxnStatus(Transaction<String> txn, int eventsWritten) {
