@@ -402,8 +402,8 @@ abstract class AbstractReadWriteTest {
         }
     }
 
-    List<CompletableFuture<Integer>> readEventFutures(ClientFactory client, String rGroup, int numReaders, int limit) {
-        List<EventStreamReader<String>> readers = new ArrayList<>();
+    <T extends Serializable> List<CompletableFuture<Integer>> readEventFutures(ClientFactory client, String rGroup, int numReaders, int limit) {
+        List<EventStreamReader<T>> readers = new ArrayList<>();
         for (int i = 0; i < numReaders; i++) {
             readers.add(client.createReader(rGroup + "-" + String.valueOf(i), rGroup,
                     new JavaSerializer<>(), ReaderConfig.builder().build()));
