@@ -57,23 +57,6 @@ class RocksDBCache implements Cache {
      */
     private static final int MIN_WRITE_BUFFER_NUMBER_TO_MERGE = 2;
 
-    /**
-     * RocksDB allows to buffer writes in-memory (memtables) to improve write performance, thus executing an async flush
-     * process of writes to disk. This parameter bounds the maximum amount of memory devoted to absorb writes.
-     */
-    private static final int WRITE_BUFFER_SIZE_MB = 64 / MAX_WRITE_BUFFER_NUMBER;
-
-    /**
-     * RocksDB stores data in memory related to internal indexes (e.g., it may range between 5% to 30% of the total
-     * memory consumption depending on the configuration and data at hand). The size of the internal indexes in RocksDB
-     * mainly depend on the size of cached data blocks (cacheBlockSizeKB). If you increase cacheBlockSizeKB, the number
-     * of blocks will decrease, so the index size will also reduce linearly (but increasing read amplification). For an
-     * in depth description of RocksDB's memory settings and their potential implications, we refer to:
-     * https://github.com/facebook/rocksdb/wiki/Memory-usage-in-RocksDB
-     */
-    private static final int CACHE_BLOCK_SIZE_KB = 32;
-
-
     @Getter
     private final String id;
     private final Options databaseOptions;
@@ -83,6 +66,9 @@ class RocksDBCache implements Cache {
     private final String dbDir;
     private final String logId;
     private final Consumer<String> closeCallback;
+    private final Integer writeBufferSizeMB;
+    private final Integer readCacheSizeMB;
+    private final Integer cacheBlockSizeKB;
 
     //endregion
 
@@ -105,6 +91,10 @@ class RocksDBCache implements Cache {
         this.closeCallback = closeCallback;
         this.closed = new AtomicBoolean();
         this.database = new AtomicReference<>();
+        // The total write buffer space is divided into the number of buffers.
+        this.writeBufferSizeMB = config.getWriteBufferSizeMB() / MAX_WRITE_BUFFER_NUMBER;
+        this.readCacheSizeMB = config.getReadCacheSizeMB();
+        this.cacheBlockSizeKB = config.getCacheBlockSizeKB();
         try {
             this.databaseOptions = createDatabaseOptions();
             this.writeOptions = createWriteOptions();
@@ -247,7 +237,8 @@ class RocksDBCache implements Cache {
 
     private Options createDatabaseOptions() {
         BlockBasedTableConfig tableFormatConfig = new BlockBasedTableConfig()
-                .setBlockSize(CACHE_BLOCK_SIZE_KB * 1024L)
+                .setBlockSize(cacheBlockSizeKB * 1024L)
+                .setBlockCacheSize(readCacheSizeMB * 1024L * 1024L)
                 .setCacheIndexAndFilterBlocks(true);
 
         return new Options()
@@ -256,7 +247,7 @@ class RocksDBCache implements Cache {
                 .setWalDir(Paths.get(this.dbDir, DB_WRITE_AHEAD_LOG_DIR).toString())
                 .setWalTtlSeconds(0)
                 .setWalSizeLimitMB(MAX_WRITE_AHEAD_LOG_SIZE_MB)
-                .setWriteBufferSize(WRITE_BUFFER_SIZE_MB * 1024L * 1024L)
+                .setWriteBufferSize(writeBufferSizeMB * 1024L * 1024L)
                 .setMaxWriteBufferNumber(MAX_WRITE_BUFFER_NUMBER)
                 .setMinWriteBufferNumberToMerge(MIN_WRITE_BUFFER_NUMBER_TO_MERGE)
                 .setTableFormatConfig(tableFormatConfig)
