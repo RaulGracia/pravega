@@ -251,8 +251,7 @@ class RocksDBCache implements Cache {
                 .setMaxWriteBufferNumber(MAX_WRITE_BUFFER_NUMBER)
                 .setMinWriteBufferNumberToMerge(MIN_WRITE_BUFFER_NUMBER_TO_MERGE)
                 .setTableFormatConfig(tableFormatConfig)
-                .setOptimizeFiltersForHits(true)
-                .setUseDirectReads(true);
+                .setOptimizeFiltersForHits(true);
     }
 
     private void clear(boolean recreateDirectory) {
