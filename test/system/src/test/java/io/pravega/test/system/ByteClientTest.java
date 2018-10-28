@@ -56,7 +56,7 @@ public class ByteClientTest extends AbstractSystemTest {
 
     private static final String STREAM = "testByteClientStream";
     private static final String SCOPE = "testByteClientScope" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
-    private static final int PARALLELISM = 4;
+    private static final int PARALLELISM = 1;
     private static final int MAX_PAYLOAD_SIZE = 10000000;
     private static final int IO_ITERATIONS = 5;
     @Rule
