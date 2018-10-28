@@ -57,7 +57,7 @@ public class ByteClientTest extends AbstractSystemTest {
     private static final String STREAM = "testByteClientStream";
     private static final String SCOPE = "testByteClientScope" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
     private static final int PARALLELISM = 1;
-    private static final int MAX_PAYLOAD_SIZE = 10000000;
+    private static final int MAX_PAYLOAD_SIZE = 100000000;
     private static final int IO_ITERATIONS = 5;
     @Rule
     public Timeout globalTimeout = Timeout.seconds(15 * 60);
@@ -126,9 +126,10 @@ public class ByteClientTest extends AbstractSystemTest {
         ByteStreamReader reader = byteStreamClient.createByteStreamReader(STREAM);
 
         for (int i = 1; i < MAX_PAYLOAD_SIZE; i *= 10) {
+            final int payloadSize = i;
             // Create the synthetic payload for the write.
-            byte[] payload = new byte[i];
-            byte[] readBuffer = new byte[i];
+            byte[] payload = new byte[payloadSize];
+            byte[] readBuffer = new byte[payloadSize];
             RandomFactory.create().nextBytes(payload);
             final int payloadHashCode = Arrays.hashCode(payload);
             log.info("Created synthetic payload of size {} with hashcode {}.", payload.length, payloadHashCode);
@@ -137,7 +138,7 @@ public class ByteClientTest extends AbstractSystemTest {
 
             // Write the same synthetic payload multiple times to the Stream.
             CompletableFuture<Void> writerLoop = Futures.loop(() -> writerIterations.get() < IO_ITERATIONS,
-                    () -> {
+                    () -> CompletableFuture.runAsync(() -> {
                         try {
                             log.debug("Writing payload of size: {}. Iteration {}.", payload.length, writerIterations.get());
                             writer.write(payload);
@@ -145,21 +146,23 @@ public class ByteClientTest extends AbstractSystemTest {
                             throw new CompletionException(e);
                         }
                         writerIterations.addAndGet(1);
-                        return null;
-                    }, writerExecutor);
+                    }, writerExecutor), writerExecutor);
 
             // Read the written data with a read buffer of the same size than the payload and check that read data is correct.
             CompletableFuture<Void> readerLoop = Futures.loop(() -> readerIterations.get() < IO_ITERATIONS,
-                    () -> {
+                    () -> CompletableFuture.runAsync(() -> {
                         try {
-                            log.debug("Reading data of size: {}. Iteration {}.",  reader.read(readBuffer), readerIterations.get());
+                            int offset = 0;
+                            while (offset < payloadSize) {
+                                offset += reader.read(readBuffer, offset, readBuffer.length - offset);
+                                log.debug("Reading data of size: {}. Iteration {}.", offset, readerIterations.get());
+                            }
                             Assert.assertEquals("Read data differs from data written.", payloadHashCode, Arrays.hashCode(readBuffer));
                         } catch (IOException e) {
                             throw new CompletionException(e);
                         }
                         readerIterations.addAndGet(1);
-                        return null;
-                    }, readerExecutor);
+                    }, readerExecutor), readerExecutor);
 
             writerLoop.join();
             readerLoop.join();
