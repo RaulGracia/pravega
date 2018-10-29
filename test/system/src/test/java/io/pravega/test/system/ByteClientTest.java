@@ -125,7 +125,7 @@ public class ByteClientTest extends AbstractSystemTest {
         @Cleanup
         ByteStreamReader reader = byteStreamClient.createByteStreamReader(STREAM);
 
-        for (int i = 1; i < MAX_PAYLOAD_SIZE; i *= 10) {
+        for (int i = 1; i <= MAX_PAYLOAD_SIZE; i *= 10) {
             final int payloadSize = i;
             // Create the synthetic payload for the write.
             byte[] payload = new byte[payloadSize];
