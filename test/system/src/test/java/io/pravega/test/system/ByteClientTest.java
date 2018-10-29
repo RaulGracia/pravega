@@ -60,7 +60,7 @@ public class ByteClientTest extends AbstractSystemTest {
     private static final int MAX_PAYLOAD_SIZE = 100000000;
     private static final int IO_ITERATIONS = 5;
     @Rule
-    public Timeout globalTimeout = Timeout.seconds(15 * 60);
+    public Timeout globalTimeout = Timeout.seconds(8 * 60);
 
     private final ScheduledExecutorService executor = ExecutorServiceHelpers.newScheduledThreadPool(4, "executor");
     private final ScalingPolicy scalingPolicy = ScalingPolicy.fixed(PARALLELISM);
