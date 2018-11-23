@@ -79,7 +79,7 @@ public class BookkeeperDockerService extends DockerBasedService {
         stringList.add(env2);
         stringList.add(env3);
         stringList.add(env4);
-
+        stringList.add("affinity:container!=" + serviceName + ".*");
         final TaskSpec taskSpec = TaskSpec
                 .builder().restartPolicy(RestartPolicy.builder().maxAttempts(0).condition("none").build())
                 .containerSpec(ContainerSpec.builder()

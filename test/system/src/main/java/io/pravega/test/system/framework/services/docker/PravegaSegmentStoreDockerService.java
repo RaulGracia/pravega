@@ -102,7 +102,7 @@ public class PravegaSegmentStoreDockerService extends DockerBasedService {
         envList.add(env3);
         envList.add(env4);
         envList.add(env5);
-
+        envList.add("affinity:container!=" + serviceName + ".*");
         final TaskSpec taskSpec = TaskSpec
                 .builder()
                 .networks(NetworkAttachmentConfig.builder().target(DOCKER_NETWORK).build())

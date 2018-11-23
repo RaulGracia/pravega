@@ -87,6 +87,7 @@ public class PravegaControllerDockerService extends DockerBasedService {
         String controllerSystemProperties = systemPropertyBuilder.toString();
         String env1 = "PRAVEGA_CONTROLLER_OPTS=" + controllerSystemProperties;
         String env2 = "JAVA_OPTS=-Xmx512m";
+        String env3 = "affinity:container!=" + serviceName + ".*";
         Map<String, String> labels = new HashMap<>();
         labels.put("com.docker.swarm.task.name", serviceName);
 
@@ -98,7 +99,7 @@ public class PravegaControllerDockerService extends DockerBasedService {
                         .mounts(Arrays.asList(mount))
                         .hostname(serviceName)
                         .labels(labels)
-                        .env(Arrays.asList(env1, env2)).args("controller").build())
+                        .env(Arrays.asList(env1, env2, env3)).args("controller").build())
                 .resources(ResourceRequirements.builder()
                         .reservations(Resources.builder()
                                 .memoryBytes(setMemInBytes(mem)).nanoCpus(setNanoCpus(cpu)).build())
