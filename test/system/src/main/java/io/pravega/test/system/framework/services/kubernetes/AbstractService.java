@@ -72,7 +72,7 @@ public abstract class AbstractService implements Service {
     private static final String DOCKER_REGISTRY =  System.getProperty("dockerImageRegistry", "");
     private static final String PRAVEGA_VERSION = System.getProperty("imageVersion", "latest");
     private static final String PRAVEGA_OPERATOR_VERSION = System.getProperty("pravegaOperatorVersion", "latest");
-    private static final String PREFIX = System.getProperty("imagePrefix", "pravega");
+    private static final String PREFIX = System.getProperty("imagePrefix", "nautilus");
 
     final K8sClient k8sClient;
     private final String id;

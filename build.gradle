@@ -738,7 +738,6 @@ project('test:system') {
         systemProperty "execType", "KUBERNETES"
         systemProperty "imageVersion", System.getProperty("imageVersion")
         systemProperty "segmentStoreExtraEnv", System.getProperty("segmentStoreExtraEnv")
-        systemProperty "imagePrefix", System.getProperty("imagePrefix")
         systemProperty "skipServiceInstallation", "false"
         systemProperty "repoUrl", "${repoUrl}"
 
