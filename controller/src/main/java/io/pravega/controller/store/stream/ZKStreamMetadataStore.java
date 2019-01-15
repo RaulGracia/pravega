@@ -13,6 +13,7 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.pravega.client.stream.RetentionPolicy;
 import io.pravega.client.stream.impl.StreamImpl;
+import io.pravega.common.Exceptions;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.lang.AtomicInt96;
 import io.pravega.common.lang.Int96;
@@ -112,6 +113,7 @@ class ZKStreamMetadataStore extends AbstractStreamMetadataStore implements AutoC
         this.counter = new AtomicInt96();
         this.limit = new AtomicInt96();
         this.refreshFutureRef = null;
+        initializeZNodes();
         this.completedTxnGC = new ZKGarbageCollector(COMPLETED_TXN_GC_NAME, storeHelper, this::gcCompletedTxn, gcPeriod);
         this.completedTxnGC.startAsync();
         this.completedTxnGC.awaitRunning();
@@ -473,6 +475,28 @@ class ZKStreamMetadataStore extends AbstractStreamMetadataStore implements AutoC
         String scopedStream = decodedScopedStreamName(ZKPaths.getNodeFromPath(path));
         String[] splits = scopedStream.split("/");
         return new StreamImpl(splits[0], splits[1]);
+    }
+
+    /**
+     * We explicitly create parent zNodes that will contain other zNodes and may get empty during their lifetime.
+     * Otherwise, they may be inadvertently created as Zookeeper "containers" by Curator. This would lead these zNodes
+     * to be candidates for automatic removal by Zookeeper if they become empty.
+     */
+    private void initializeZNodes() {
+        for (int bucket = 0; bucket < bucketCount; bucket++) {
+            initializeZNode(String.format(BUCKET_PATH, bucket)).join();
+        }
+    }
+
+    private CompletableFuture<Void> initializeZNode(String zNodePath) {
+        return storeHelper.addNode(zNodePath).exceptionally(ex -> {
+            if (Exceptions.unwrap(ex) instanceof StoreException.DataExistsException) {
+                log.debug("zNode already initialized: {}.", zNodePath);
+            } else {
+                throw new CompletionException("Unexpected exception initializing zNode.", ex);
+            }
+            return null;
+        });
     }
 
     // region getters and setters for testing
