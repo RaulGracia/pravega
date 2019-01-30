@@ -216,7 +216,11 @@ public final class EventProcessorGroupImpl<T extends ControllerEvent> extends Ab
 
                 // 2. Clean up reader from checkpoint store
                 log.info("{} removing reader={} from checkpoint store", this.objectId, entry.getKey());
-                checkpointStore.removeReader(process, readerGroup.getGroupName(), entry.getKey());
+                try {
+                    checkpointStore.removeReader(process, readerGroup.getGroupName(), entry.getKey());
+                } catch (Exception e) {
+                    log.warn("Error occurred while removing reader from Checkpoint", e);
+                }
             }
 
             // finally, remove reader group from checkpoint store
