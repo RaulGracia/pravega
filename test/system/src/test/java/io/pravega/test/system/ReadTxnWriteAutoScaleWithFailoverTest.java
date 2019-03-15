@@ -106,7 +106,7 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
                                          .clientConfig( ClientConfig.builder().controllerURI(controllerURIDirect).build())
                                          .maxBackoffMillis(5000).build(),
                 controllerExecutorService);
-        testState = new TestState(false);
+        testState = new TestState(true);
         streamManager = new StreamManagerImpl( ClientConfig.builder().controllerURI(controllerURIDirect).build());
         createScopeAndStream(scope, stream, config, streamManager);
         log.info("Scope passed to client factory {}", scope);

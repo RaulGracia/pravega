@@ -105,7 +105,7 @@ public class MultiReaderTxnWriterWithFailoverTest extends AbstractFailoverTests 
                                                             .clientConfig(ClientConfig.builder().controllerURI(controllerURIDirect).build())
                                                             .maxBackoffMillis(5000).build(),
                                         controllerExecutorService);
-        testState = new TestState(false);
+        testState = new TestState(true);
         //read and write count variables
         streamManager = new StreamManagerImpl( ClientConfig.builder().controllerURI(controllerURIDirect).build());
         createScopeAndStream(scope, STREAM_NAME, config, streamManager);
