@@ -103,7 +103,7 @@ public class ReadWithAutoScaleTest extends AbstractScaleTests {
     public void scaleTestsWithReader() {
         URI controllerUri = getControllerURI();
         Controller controller = getController();
-        testState = new TestState(true);
+        testState = new TestState(false);
 
         final AtomicBoolean stopWriteFlag = new AtomicBoolean(false);
         final AtomicBoolean stopReadFlag = new AtomicBoolean(false);
