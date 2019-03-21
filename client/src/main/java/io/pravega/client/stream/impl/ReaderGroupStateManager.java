@@ -131,19 +131,23 @@ public class ReaderGroupStateManager {
      * @param lastPosition The last position the reader successfully read from.
      */
     static void readerShutdown(String readerId, Position lastPosition, StateSynchronizer<ReaderGroupState> sync) {
+        log.info("Entering readerShutdown for reader {}", readerId);
         sync.updateState((state, updates) -> {
+            log.info("Shutting down reader {}", readerId);
             Set<Segment> segments = state.getSegments(readerId);
             if (segments == null) {
                 return;
             }
-            log.debug("Removing reader {} from reader grop. CurrentState is: {}", readerId, state);
+            log.info("Removing reader {} from reader group. CurrentState is: {}", readerId, state);
             if (lastPosition != null && !lastPosition.asImpl().getOwnedSegments().containsAll(segments)) {
+                log.error("Exception removing reader {} from reader group. CurrentState is: {}", readerId, state);
                 throw new IllegalArgumentException(
                         "When shutting down a reader: Given position does not match the segments it was assigned: \n"
                                 + segments + " \n vs \n " + lastPosition.asImpl().getOwnedSegments());
             }
             updates.add(new RemoveReader(readerId, lastPosition == null ? null : lastPosition.asImpl().getOwnedSegmentsWithOffsets()));
         });
+        log.info("Exiting readerShutdown for reader {}", readerId);
     }
     
     void close() {
