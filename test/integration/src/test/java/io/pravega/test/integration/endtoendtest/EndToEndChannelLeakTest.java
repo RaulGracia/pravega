@@ -40,6 +40,7 @@ import io.pravega.test.integration.demo.ControllerWrapper;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import lombok.Cleanup;
@@ -49,7 +50,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-import static io.pravega.test.common.AssertExtensions.assertEventuallyEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
@@ -60,6 +60,7 @@ public class EndToEndChannelLeakTest {
     private static final String SCOPE = "test";
     private static final String STREAM_NAME = "test";
     private static final String READER_GROUP = "reader";
+    private static final long ASSERT_TIMEOUT = 5000;
 
     private final int controllerPort = TestUtils.getAvailableListenPort();
     private final String serviceHost = "localhost";
@@ -262,5 +263,16 @@ public class EndToEndChannelLeakTest {
         //+1 flow (a new flow to the remaining stream segment)
         expectedChannelCount += 1;
         assertEventuallyEquals(5, () -> connectionFactory.getActiveChannelCount());
+    }
+
+    private void assertEventuallyEquals(int expected, Callable<Integer> eval) throws Exception {
+        long endTime = System.currentTimeMillis() + ASSERT_TIMEOUT;
+        while (endTime > System.currentTimeMillis()) {
+            if (expected == eval.call()) {
+                return;
+            }
+            Thread.sleep(10);
+        }
+        assertEquals(expected, eval.call().intValue());
     }
 }
