@@ -262,11 +262,15 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
                 log.info("Closing reader {} at position {}.", this, position);
                 closed = true;
                 groupState.readerShutdown(position);
+                log.info("After readerShutdown {} at position {}.", this, position);
                 for (EventSegmentReader reader : readers) {
+                    log.info("Iterating over readers to close {}.", reader);
                     reader.close();
                 }
                 readers.clear();
+                log.info("Closing groupState {}.", groupState);
                 groupState.close();
+                log.info("Leaving closeAt {} at position {}.", this, position);
             }
         }
     }
