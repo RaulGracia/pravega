@@ -283,7 +283,8 @@ public final class ServiceStarter {
                 this.sessionTimeout = sessionTimeout;
                 this.canBeReadOnly = canBeReadOnly;
             }
-            log.info("Creating new Zookeeper client: {}, {}, {}.", this.connectString, this.sessionTimeout, this.canBeReadOnly);
+            log.info("Creating new Zookeeper client: {}, {}, {}. Curator input arguments: {}, {}, {}.",
+                this.connectString, this.sessionTimeout, this.canBeReadOnly, connectString, sessionTimeout, canBeReadOnly);
             this.client = new ZooKeeper(this.connectString, this.sessionTimeout, watcher, this.canBeReadOnly);
             return this.client;
         }
