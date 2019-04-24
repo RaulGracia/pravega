@@ -9,6 +9,7 @@
  */
 package io.pravega.segmentstore.server.host;
 
+import com.google.common.base.Preconditions;
 import io.pravega.common.Exceptions;
 import io.pravega.common.auth.JKSHelper;
 import io.pravega.common.auth.ZKTLSUtils;
@@ -31,10 +32,16 @@ import io.pravega.shared.metrics.MetricsConfig;
 import io.pravega.shared.metrics.MetricsProvider;
 import io.pravega.shared.metrics.StatsProvider;
 import java.util.concurrent.atomic.AtomicReference;
+import lombok.AccessLevel;
+import lombok.Setter;
+import lombok.Synchronized;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
 import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.curator.utils.ZookeeperFactory;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooKeeper;
 
 import static org.apache.zookeeper.client.ZKClientConfig.SECURE_CLIENT;
 import static org.apache.zookeeper.client.ZKClientConfig.ZOOKEEPER_CLIENT_CNXN_SOCKET;
@@ -200,6 +207,7 @@ public final class ServiceStarter {
                 .builder()
                 .connectString(this.serviceConfig.getZkURL())
                 .namespace("pravega/" + this.serviceConfig.getClusterName())
+                .zookeeperFactory(new ZKClientFactory())
                 .retryPolicy(new ExponentialBackoffRetry(this.serviceConfig.getZkRetrySleepMs(), this.serviceConfig.getZkRetryCount()))
                 .sessionTimeoutMs(this.serviceConfig.getZkSessionTimeoutMs())
                 .build();
@@ -257,4 +265,27 @@ public final class ServiceStarter {
     }
 
     //endregion
+
+    static class ZKClientFactory implements ZookeeperFactory {
+        private ZooKeeper client;
+        @Setter(AccessLevel.PACKAGE)
+        private String connectString;
+        private int sessionTimeout;
+        private boolean canBeReadOnly;
+
+        @Override
+        @Synchronized
+        public ZooKeeper newZooKeeper(String connectString, int sessionTimeout, Watcher watcher, boolean canBeReadOnly) throws Exception {
+            Exceptions.checkNotNullOrEmpty(connectString, "connectString");
+            Preconditions.checkArgument(sessionTimeout > 0, "sessionTimeout should be a positive integer");
+            if (client == null) {
+                this.connectString = connectString;
+                this.sessionTimeout = sessionTimeout;
+                this.canBeReadOnly = canBeReadOnly;
+            }
+            log.info("Creating new Zookeeper client: {}, {}, {}.", this.connectString, this.sessionTimeout, this.canBeReadOnly);
+            this.client = new ZooKeeper(this.connectString, this.sessionTimeout, watcher, this.canBeReadOnly);
+            return this.client;
+        }
+    }
 }
