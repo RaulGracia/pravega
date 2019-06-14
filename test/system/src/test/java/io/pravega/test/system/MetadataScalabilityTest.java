@@ -27,6 +27,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 import org.junit.After;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.rules.Timeout;
 import org.junit.runner.RunWith;
@@ -50,6 +51,7 @@ import static org.junit.Assert.assertTrue;
 
 @Slf4j
 @RunWith(SystemTestRunner.class)
+@Ignore
 /**
  * Base class for scalability tests. This class takes a stream name and number of segments and scales to perform and then 
  * performs that many scales. The scale input is supplied by derived class. 

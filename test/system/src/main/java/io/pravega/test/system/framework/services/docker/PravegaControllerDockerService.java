@@ -22,8 +22,11 @@ import com.spotify.docker.client.messages.swarm.ServiceSpec;
 import com.spotify.docker.client.messages.swarm.TaskSpec;
 import java.net.URI;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import static io.pravega.test.system.framework.Utils.ALTERNATIVE_CONTROLLER_PORT;
 import static io.pravega.test.system.framework.Utils.ALTERNATIVE_REST_PORT;
@@ -63,6 +66,19 @@ public class PravegaControllerDockerService extends DockerBasedService {
     @Override
     public void start(final boolean wait) {
         start(wait, setServiceSpec());
+    }
+
+    @Override
+    public List<URI> getServiceDetails() {
+        String multiControllerURI = super.getServiceDetails().stream()
+                                                             .map(uri -> uri.toString().replace("tcp://", ""))
+                                                             .collect(Collectors.joining(","));
+        if (multiControllerURI != null) {
+            multiControllerURI = "pravega://" + multiControllerURI;
+            log.info("Multi controller service URI {}.", multiControllerURI);
+            return Collections.singletonList(URI.create(multiControllerURI));
+        }
+        return Collections.emptyList();
     }
 
     private ServiceSpec setServiceSpec() {
