@@ -125,7 +125,7 @@ project('common') {
 
         }
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion  
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         options.addBooleanOption("Xdoclint:none", true)
     }
@@ -142,7 +142,7 @@ project('shared:authplugin') {
         title = "Pravega Auth API"
         failOnError = false
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion   
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         source {
             sourceSets.main.java
@@ -164,7 +164,7 @@ project ('shared:cluster') {
     javadoc {
         exclude 'io/pravega/shared/*'
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion   
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:none", true)
@@ -185,7 +185,7 @@ project ('shared:metrics') {
     javadoc {
         exclude 'io/pravega/shared/*'
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:none", true)
@@ -199,7 +199,7 @@ project('shared:protocol') {
         compile group: 'io.netty', name: 'netty-handler', version: nettyVersion
         compile group: 'com.google.guava', name: 'guava', version: guavaVersion
         testCompile project(':test:testcommon')
-     
+
     }
 }
 
@@ -235,7 +235,7 @@ project('test:testcommon') {
     }
     javadoc {
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:none", true)
@@ -249,7 +249,7 @@ project('segmentstore:contracts') {
     }
     javadoc {
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:all,-reference", true)
@@ -266,7 +266,7 @@ project('segmentstore:storage') {
     }
     javadoc {
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:none", true)
@@ -286,7 +286,7 @@ project('segmentstore:storage:impl') {
     }
     javadoc {
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:none", true)
@@ -315,7 +315,7 @@ project ('bindings') {
     }
     javadoc {
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:none", true)
@@ -332,7 +332,7 @@ project('segmentstore:server') {
     }
     javadoc {
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:all,-reference,-missing", true)
@@ -375,6 +375,10 @@ project('segmentstore:server:host') {
         compile project(':bindings')
         compile project(':segmentstore:server')
         compile 'io.jsonwebtoken:jjwt:0.9.0'
+        // Adding JAXB API and the reference implementation as a dependency here, since they are not available
+        // in newer Java SE versions (9 and newer).
+        compile group: 'javax.xml.bind', name: 'jaxb-api', version: jaxbVersion
+        compile group: 'org.glassfish.jaxb', name: 'jaxb-runtime', version: jaxbVersion
         compile group: 'ch.qos.logback', name: 'logback-classic', version: qosLogbackVersion
         testCompile project(':test:testcommon')
         testCompile group: 'org.apache.curator', name: 'curator-test', version: apacheCuratorVersion
@@ -529,7 +533,7 @@ project('shared:controller-api') {
     javadoc {
         exclude 'io/pravega/controller/*'
         dependencies {
-            compile 'org.projectlombok:lombok:' + lombokVersion            
+            compile 'org.projectlombok:lombok:' + lombokVersion
         }
         failOnError = false
         options.addBooleanOption("Xdoclint:none", true)
@@ -595,6 +599,10 @@ project('controller') {
         testCompile project(':test:testcommon')
         testCompile group: 'org.apache.curator', name: 'curator-test', version: apacheCuratorVersion
         compile 'io.jsonwebtoken:jjwt:0.9.0'
+        // Adding JAXB API and the reference implementation as a dependency here, since they are not available
+        // in newer Java SE versions (9 and newer).
+        compile group: 'javax.xml.bind', name: 'jaxb-api', version: jaxbVersion
+        compile group: 'org.glassfish.jaxb', name: 'jaxb-runtime', version: jaxbVersion
         compile group: 'io.netty', name: 'netty-tcnative-boringssl-static', version: nettyBoringSSLVersion
         // since Java 10 JAXB is not more bundled with the JRE
         compile group: 'javax.xml.bind', name: 'jaxb-api', version: jaxbVersion
@@ -709,6 +717,10 @@ project('test:system') {
         compile group: 'javax.ws.rs', name: 'javax.ws.rs-api', version: javaxwsrsApiVersion
         compile group: 'org.glassfish.jersey.core', name: 'jersey-client', version: jerseyVersion
         compile group: 'org.glassfish.jersey.media', name: 'jersey-media-json-jackson', version: jerseyVersion
+        // Adding JAXB API and the reference implementation as a dependency here, since they are not available
+        // in newer Java SE versions (9 and newer).
+        compile group: 'javax.xml.bind', name: 'jaxb-api', version: jaxbVersion
+        compile group: 'org.glassfish.jaxb', name: 'jaxb-runtime', version: jaxbVersion
         compile group: 'org.glassfish.jersey.connectors', name:'jersey-apache-connector', version:jerseyVersion
         compile group: 'com.spotify', name: 'docker-client', version: dockerClientVersion
         compile group: 'io.kubernetes', name: 'client-java', version: k8ClientVersion
