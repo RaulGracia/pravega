@@ -236,6 +236,7 @@ public class FileSystemStorage implements SyncStorage {
     private int doRead(SegmentHandle handle, long offset, byte[] buffer, int bufferOffset, int length) throws IOException {
         long traceId = LoggerHelpers.traceEnter(log, "read", handle.getSegmentName(), offset, bufferOffset, length);
         Timer timer = new Timer();
+        int lengthCopy = length;
 
         Path path = Paths.get(config.getRoot(), handle.getSegmentName());
 
@@ -257,7 +258,7 @@ public class FileSystemStorage implements SyncStorage {
             } while (length != 0);
 
             Duration d = timer.getElapsed();
-            log.info("measurement-read: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), length);
+            log.info("measurement-read: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), lengthCopy);
             FileSystemMetrics.READ_LATENCY.reportSuccessEvent(d);
             FileSystemMetrics.READ_BYTES.add(totalBytesRead);
             LoggerHelpers.traceLeave(log, "read", traceId, totalBytesRead);
@@ -309,6 +310,7 @@ public class FileSystemStorage implements SyncStorage {
     private Void doWrite(SegmentHandle handle, long offset, InputStream data, int length) throws Exception {
         long traceId = LoggerHelpers.traceEnter(log, "write", handle.getSegmentName(), offset, length);
         Timer timer = new Timer();
+        int lengthCopy = length;
 
         if (handle.isReadOnly()) {
             throw new IllegalArgumentException("Write called on a readonly handle of segment " + handle.getSegmentName());
@@ -343,7 +345,7 @@ public class FileSystemStorage implements SyncStorage {
         }
 
         Duration d = timer.getElapsed();
-        log.info("measurement-write: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), length);
+        log.info("measurement-write: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), lengthCopy);
         FileSystemMetrics.WRITE_LATENCY.reportSuccessEvent(d);
         FileSystemMetrics.WRITE_BYTES.add(totalBytesWritten);
         LoggerHelpers.traceLeave(log, "write", traceId);

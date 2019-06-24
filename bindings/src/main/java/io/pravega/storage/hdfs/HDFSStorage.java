@@ -551,7 +551,9 @@ class HDFSStorage implements SyncStorage {
     private FileStatus[] findAllRaw(String segmentName) throws IOException {
         assert segmentName != null && segmentName.length() > 0 : "segmentName must be non-null and non-empty";
         String pattern = String.format(NAME_FORMAT, getPathPrefix(segmentName), SUFFIX_GLOB_REGEX);
+        Timer timer = new Timer();
         FileStatus[] files = this.fileSystem.globStatus(new Path(pattern));
+        log.info("measurement-globStatus: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), segmentName);
 
         if (files.length > 1) {
             throw new IllegalArgumentException("More than one file");
