@@ -28,6 +28,7 @@ import java.io.EOFException;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
@@ -156,10 +157,12 @@ class HDFSStorage implements SyncStorage {
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "getStreamSegmentInfo", streamSegmentName);
         try {
+            Timer timer = new Timer();
             return HDFS_RETRY.run(() -> {
                 FileStatus last = findStatusForSegment(streamSegmentName, true);
                 boolean isSealed = isSealed(last.getPath());
                 StreamSegmentInformation result = StreamSegmentInformation.builder().name(streamSegmentName).length(last.getLen()).sealed(isSealed).build();
+                log.info("measurement-getStreamSegmentInfo: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
                 LoggerHelpers.traceLeave(log, "getStreamSegmentInfo", traceId, streamSegmentName, result);
                 return result;
             });
@@ -176,7 +179,9 @@ class HDFSStorage implements SyncStorage {
         long traceId = LoggerHelpers.traceEnter(log, "exists", streamSegmentName);
         FileStatus status = null;
         try {
+            Timer timer = new Timer();
             status = findStatusForSegment(streamSegmentName, false);
+            log.info("measurement-exists: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
         } catch (IOException e) {
             // HDFS could not find the file. Returning false.
             log.warn("Got exception checking if file exists", e);
@@ -210,7 +215,9 @@ class HDFSStorage implements SyncStorage {
         try {
             return HDFS_RETRY.run(() -> {
                             int totalBytesRead  = readInternal(handle, buffer, offset, bufferOffset, length);
-                            HDFSMetrics.READ_LATENCY.reportSuccessEvent(timer.getElapsed());
+                            Duration d = timer.getElapsed();
+                            log.info("measurement-read: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), length);
+                            HDFSMetrics.READ_LATENCY.reportSuccessEvent(d);
                             HDFSMetrics.READ_BYTES.add(totalBytesRead);
                             LoggerHelpers.traceLeave(log, "read", traceId, handle, offset, totalBytesRead);
                             return totalBytesRead;
@@ -228,9 +235,12 @@ class HDFSStorage implements SyncStorage {
         long traceId = LoggerHelpers.traceEnter(log, "openRead", streamSegmentName);
         try {
             //Ensure that file exists
+            Timer timer = new Timer();
             findStatusForSegment(streamSegmentName, true);
             LoggerHelpers.traceLeave(log, "openRead", traceId, streamSegmentName);
-            return HDFSSegmentHandle.read(streamSegmentName);
+            SegmentHandle sh = HDFSSegmentHandle.read(streamSegmentName);
+            log.info("measurement-openRead: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
+            return sh;
         } catch (IOException e) {
             throw HDFSExceptionHelpers.convertException(streamSegmentName, e);
         }
@@ -240,6 +250,7 @@ class HDFSStorage implements SyncStorage {
     public void seal(SegmentHandle handle) throws StreamSegmentException {
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "seal", handle);
+        Timer timer = new Timer();
         handle = asWritableHandle(handle);
         try {
             FileStatus status = findStatusForSegment(handle.getSegmentName(), true);
@@ -251,6 +262,7 @@ class HDFSStorage implements SyncStorage {
                 makeReadOnly(status);
                 Path sealedPath = getSealedFilePath(handle.getSegmentName());
                 this.fileSystem.rename(status.getPath(), sealedPath);
+                log.info("measurement-seal: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), handle.getSegmentName());
             }
         } catch (IOException e) {
             throw HDFSExceptionHelpers.convertException(handle.getSegmentName(), e);
@@ -263,9 +275,11 @@ class HDFSStorage implements SyncStorage {
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "seal", handle);
         try {
+            Timer timer = new Timer();
             FileStatus status = findStatusForSegment(handle.getSegmentName(), true);
             makeWrite(status);
             this.fileSystem.rename(status.getPath(), getFilePath(handle.getSegmentName(), this.epoch));
+            log.info("measurement-unseal: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), handle.getSegmentName());
         } catch (IOException e) {
             throw HDFSExceptionHelpers.convertException(handle.getSegmentName(), e);
         }
@@ -276,7 +290,7 @@ class HDFSStorage implements SyncStorage {
     public void concat(SegmentHandle target, long offset, String sourceSegment) throws StreamSegmentException {
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "concat", target, offset, sourceSegment);
-
+        Timer timer = new Timer();
         target = asWritableHandle(target);
         // Check for target offset and whether it is sealed.
         FileStatus fileStatus = null;
@@ -301,6 +315,8 @@ class HDFSStorage implements SyncStorage {
 
             // Concat source file into target.
             this.fileSystem.concat(fileStatus.getPath(), new Path[]{sourceFile.getPath()});
+            log.info("measurement-concat: duration={}, sourceStreamSegmentName={}, targetStreamSegmentName={}", timer.getElapsed().toMillis(),
+                    sourceSegment, target.getSegmentName());
         } catch (IOException ex) {
             throw HDFSExceptionHelpers.convertException(sourceSegment, ex);
         }
@@ -311,6 +327,7 @@ class HDFSStorage implements SyncStorage {
     public void delete(SegmentHandle handle) throws StreamSegmentException {
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "delete", handle);
+        Timer timer = new Timer();
         handle = asWritableHandle(handle);
         try {
             FileStatus statusForSegment = findStatusForSegment(handle.getSegmentName(), true);
@@ -318,6 +335,7 @@ class HDFSStorage implements SyncStorage {
                 throw new StorageNotPrimaryException(handle.getSegmentName());
             }
             this.fileSystem.delete(statusForSegment.getPath(), true);
+            log.info("measurement-delete: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), handle.getSegmentName());
         } catch (IOException e) {
             throw HDFSExceptionHelpers.convertException(handle.getSegmentName(), e);
         }
@@ -342,6 +360,8 @@ class HDFSStorage implements SyncStorage {
     public void write(SegmentHandle handle, long offset, InputStream data, int length) throws StreamSegmentException {
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "write", handle, offset, length);
+
+        Timer timer = new Timer();
         handle = asWritableHandle(handle);
         FileStatus status = null;
         try {
@@ -356,7 +376,6 @@ class HDFSStorage implements SyncStorage {
              throw HDFSExceptionHelpers.convertException(handle.getSegmentName(), e);
         }
 
-        Timer timer = new Timer();
         try (FSDataOutputStream stream = this.fileSystem.append(status.getPath())) {
             if (offset != status.getLen()) {
                 // Do the handle offset validation here, after we open the file. We want to throw FileNotFoundException
@@ -386,7 +405,9 @@ class HDFSStorage implements SyncStorage {
             throw HDFSExceptionHelpers.convertException(handle.getSegmentName(), ex);
         }
 
-        HDFSMetrics.WRITE_LATENCY.reportSuccessEvent(timer.getElapsed());
+        Duration d = timer.getElapsed();
+        log.info("measurement-write: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), length);
+        HDFSMetrics.WRITE_LATENCY.reportSuccessEvent(d);
         HDFSMetrics.WRITE_BYTES.add(length);
         LoggerHelpers.traceLeave(log, "write", traceId, handle, offset, length);
     }
@@ -396,6 +417,7 @@ class HDFSStorage implements SyncStorage {
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "openWrite", streamSegmentName);
         long fencedCount = 0;
+        Timer timer = new Timer();
         do {
             try {
                 FileStatus fileStatus = findStatusForSegment(streamSegmentName, true);
@@ -424,7 +446,10 @@ class HDFSStorage implements SyncStorage {
                 }
                 //Ensure that file exists
                 findStatusForSegment(streamSegmentName, true);
-                return HDFSSegmentHandle.write(streamSegmentName);
+                SegmentHandle sh = HDFSSegmentHandle.write(streamSegmentName);
+                log.info("measurement-openWrite: duration={}, streamSegmentName={}, fencedCount={}", timer.getElapsed().toMillis(),
+                        streamSegmentName, fencedCount);
+                return sh;
             } catch (IOException e) {
                 throw HDFSExceptionHelpers.convertException(streamSegmentName, e);
             }
@@ -446,6 +471,7 @@ class HDFSStorage implements SyncStorage {
 
         ensureInitializedAndNotClosed();
         long traceId = LoggerHelpers.traceEnter(log, "create", streamSegmentName);
+        Timer timer = new Timer();
         // Create the segment using our own epoch.
         FileStatus[] status = null;
         try {
@@ -485,7 +511,9 @@ class HDFSStorage implements SyncStorage {
         LoggerHelpers.traceLeave(log, "create", traceId, streamSegmentName);
 
         // return handle
-        return HDFSSegmentHandle.write(streamSegmentName);
+        SegmentHandle sh = HDFSSegmentHandle.write(streamSegmentName);
+        log.info("measurement-create: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
+        return sh;
     }
     //endregion
 

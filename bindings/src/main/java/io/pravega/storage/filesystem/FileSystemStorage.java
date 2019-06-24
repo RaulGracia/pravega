@@ -45,6 +45,7 @@ import java.nio.file.attribute.PosixFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.AccessControlException;
+import java.time.Duration;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -201,6 +202,7 @@ public class FileSystemStorage implements SyncStorage {
 
     private SegmentHandle doOpenRead(String streamSegmentName) throws StreamSegmentNotExistsException {
         long traceId = LoggerHelpers.traceEnter(log, "openRead", streamSegmentName);
+        Timer timer = new Timer();
         Path path = Paths.get(config.getRoot(), streamSegmentName);
 
         if (!Files.exists(path)) {
@@ -208,21 +210,27 @@ public class FileSystemStorage implements SyncStorage {
         }
 
         LoggerHelpers.traceLeave(log, "openRead", traceId, streamSegmentName);
-        return FileSystemSegmentHandle.readHandle(streamSegmentName);
+        SegmentHandle segmentHandle = FileSystemSegmentHandle.readHandle(streamSegmentName);
+        log.info("measurement-openRead: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
+        return segmentHandle;
     }
 
     private SegmentHandle doOpenWrite(String streamSegmentName) throws StreamSegmentNotExistsException {
         long traceId = LoggerHelpers.traceEnter(log, "openWrite", streamSegmentName);
+        Timer timer = new Timer();
+        SegmentHandle segmentHandle = null;
         Path path = Paths.get(config.getRoot(), streamSegmentName);
         if (!Files.exists(path)) {
             throw new StreamSegmentNotExistsException(streamSegmentName);
         } else if (Files.isWritable(path)) {
             LoggerHelpers.traceLeave(log, "openWrite", traceId);
-            return FileSystemSegmentHandle.writeHandle(streamSegmentName);
+            segmentHandle = FileSystemSegmentHandle.writeHandle(streamSegmentName);
         } else {
             LoggerHelpers.traceLeave(log, "openWrite", traceId);
-            return FileSystemSegmentHandle.readHandle(streamSegmentName);
+            segmentHandle = FileSystemSegmentHandle.readHandle(streamSegmentName);
         }
+        log.info("measurement-openWrite: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
+        return segmentHandle;
     }
 
     private int doRead(SegmentHandle handle, long offset, byte[] buffer, int bufferOffset, int length) throws IOException {
@@ -247,7 +255,10 @@ public class FileSystemStorage implements SyncStorage {
                 totalBytesRead += bytesRead;
                 length -= bytesRead;
             } while (length != 0);
-            FileSystemMetrics.READ_LATENCY.reportSuccessEvent(timer.getElapsed());
+
+            Duration d = timer.getElapsed();
+            log.info("measurement-read: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), length);
+            FileSystemMetrics.READ_LATENCY.reportSuccessEvent(d);
             FileSystemMetrics.READ_BYTES.add(totalBytesRead);
             LoggerHelpers.traceLeave(log, "read", traceId, totalBytesRead);
             return totalBytesRead;
@@ -256,6 +267,7 @@ public class FileSystemStorage implements SyncStorage {
 
     private SegmentProperties doGetStreamSegmentInfo(String streamSegmentName) throws IOException {
         long traceId = LoggerHelpers.traceEnter(log, "getStreamSegmentInfo", streamSegmentName);
+        Timer timer = new Timer();
         PosixFileAttributes attrs = Files.readAttributes(Paths.get(config.getRoot(), streamSegmentName),
                 PosixFileAttributes.class);
         StreamSegmentInformation information = StreamSegmentInformation.builder()
@@ -265,16 +277,21 @@ public class FileSystemStorage implements SyncStorage {
                 .lastModified(new ImmutableDate(attrs.creationTime().toMillis()))
                 .build();
 
+        log.info("measurement-getStreamSegmentInfo: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
         LoggerHelpers.traceLeave(log, "getStreamSegmentInfo", traceId, streamSegmentName);
         return information;
     }
 
     private boolean doExists(String streamSegmentName) {
-        return Files.exists(Paths.get(config.getRoot(), streamSegmentName));
+        Timer timer = new Timer();
+        boolean exists = Files.exists(Paths.get(config.getRoot(), streamSegmentName));
+        log.info("measurement-exists: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
+        return exists;
     }
 
     private SegmentHandle doCreate(String streamSegmentName) throws IOException {
         long traceId = LoggerHelpers.traceEnter(log, "create", streamSegmentName);
+        Timer timer = new Timer();
         FileAttribute<Set<PosixFilePermission>> fileAttributes = PosixFilePermissions.asFileAttribute(READ_WRITE_PERMISSION);
 
         Path path = Paths.get(config.getRoot(), streamSegmentName);
@@ -284,7 +301,9 @@ public class FileSystemStorage implements SyncStorage {
         Files.createFile(path, fileAttributes);
         LoggerHelpers.traceLeave(log, "create", traceId);
         FileSystemMetrics.CREATE_COUNT.inc();
-        return FileSystemSegmentHandle.writeHandle(streamSegmentName);
+        SegmentHandle sh = FileSystemSegmentHandle.writeHandle(streamSegmentName);
+        log.info("measurement-create: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), streamSegmentName);
+        return sh;
     }
 
     private Void doWrite(SegmentHandle handle, long offset, InputStream data, int length) throws Exception {
@@ -322,7 +341,10 @@ public class FileSystemStorage implements SyncStorage {
             }
             channel.force(false);
         }
-        FileSystemMetrics.WRITE_LATENCY.reportSuccessEvent(timer.getElapsed());
+
+        Duration d = timer.getElapsed();
+        log.info("measurement-write: duration={}, streamSegmentName={}, length={}", d.toMillis(), handle.getSegmentName(), length);
+        FileSystemMetrics.WRITE_LATENCY.reportSuccessEvent(d);
         FileSystemMetrics.WRITE_BYTES.add(totalBytesWritten);
         LoggerHelpers.traceLeave(log, "write", traceId);
         return null;
@@ -335,18 +357,22 @@ public class FileSystemStorage implements SyncStorage {
 
     private Void doSeal(SegmentHandle handle) throws IOException {
         long traceId = LoggerHelpers.traceEnter(log, "seal", handle.getSegmentName());
+        Timer timer = new Timer();
         if (handle.isReadOnly()) {
             throw new IllegalArgumentException(handle.getSegmentName());
         }
 
         Files.setPosixFilePermissions(Paths.get(config.getRoot(), handle.getSegmentName()), READ_ONLY_PERMISSION);
+        log.info("measurement-seal: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), handle.getSegmentName());
         LoggerHelpers.traceLeave(log, "seal", traceId);
         return null;
     }
 
     private Void doUnseal(SegmentHandle handle) throws IOException {
         long traceId = LoggerHelpers.traceEnter(log, "unseal", handle.getSegmentName());
+        Timer timer = new Timer();
         Files.setPosixFilePermissions(Paths.get(config.getRoot(), handle.getSegmentName()), READ_WRITE_PERMISSION);
+        log.info("measurement-unseal: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), handle.getSegmentName());
         LoggerHelpers.traceLeave(log, "unseal", traceId);
         return null;
     }
@@ -363,7 +389,7 @@ public class FileSystemStorage implements SyncStorage {
     private Void doConcat(SegmentHandle targetHandle, long offset, String sourceSegment) throws IOException {
         long traceId = LoggerHelpers.traceEnter(log, "concat", targetHandle.getSegmentName(),
                 offset, sourceSegment);
-
+        Timer timer = new Timer();
         Path sourcePath = Paths.get(config.getRoot(), sourceSegment);
         Path targetPath = Paths.get(config.getRoot(), targetHandle.getSegmentName());
 
@@ -380,13 +406,17 @@ public class FileSystemStorage implements SyncStorage {
             }
             targetChannel.force(false);
             Files.delete(sourcePath);
+            log.info("measurement-concat: duration={}, sourceStreamSegmentName={}, targetStreamSegmentName={}", timer.getElapsed().toMillis(),
+                    sourceSegment, targetHandle.getSegmentName());
             LoggerHelpers.traceLeave(log, "concat", traceId);
             return null;
         }
     }
 
     private Void doDelete(SegmentHandle handle) throws IOException {
+        Timer timer = new Timer();
         Files.delete(Paths.get(config.getRoot(), handle.getSegmentName()));
+        log.info("measurement-delete: duration={}, streamSegmentName={}", timer.getElapsed().toMillis(), handle.getSegmentName());
         return null;
     }
 
