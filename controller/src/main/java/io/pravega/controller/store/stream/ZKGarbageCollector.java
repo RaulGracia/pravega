@@ -150,7 +150,7 @@ class ZKGarbageCollector extends AbstractService implements AutoCloseable {
                         log.debug("Unable to acquire guard. Will try in next cycle.");
                     } else {
                         // if GC failed, it will be tried again in the next cycle. So log and ignore.
-                        log.error("Exception thrown during Garbage Collection iteration for {}. Log and ignore.", gcName, e);
+                        log.warn("Exception thrown during Garbage Collection iteration for {}. Log and ignore.", gcName, e.toString());
                     }
                     return null;
                 }).thenCompose(v -> fetchVersion());
