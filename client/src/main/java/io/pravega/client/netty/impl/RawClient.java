@@ -22,6 +22,8 @@ import io.pravega.shared.protocol.netty.Request;
 import io.pravega.shared.protocol.netty.WireCommand;
 import io.pravega.shared.protocol.netty.WireCommands;
 import io.pravega.shared.protocol.netty.WireCommands.Hello;
+
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -30,10 +32,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.annotation.concurrent.GuardedBy;
 import lombok.Getter;
+import lombok.NonNull;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class RawClient implements AutoCloseable {
+    private static final Duration DEFAULT_RAWCLIENT_REQUEST_TIMEOUT = Duration.ofSeconds(30);
 
     private final CompletableFuture<ClientConnection> connection;
     private final Segment segmentId;
@@ -45,6 +49,7 @@ public class RawClient implements AutoCloseable {
     private final AtomicBoolean closed = new AtomicBoolean(false);
     @Getter
     private final Flow flow = Flow.create();
+    private final ConnectionFactory connectionFactory;
 
     private final class ResponseProcessor extends FailingReplyProcessor {
 
@@ -80,8 +85,9 @@ public class RawClient implements AutoCloseable {
         }
     }
 
-    public RawClient(Controller controller, ConnectionFactory connectionFactory, Segment segmentId) {
+    public RawClient(@NonNull Controller controller, @NonNull ConnectionFactory connectionFactory, Segment segmentId) {
         this.segmentId = segmentId;
+        this.connectionFactory = connectionFactory;
         this.connection = controller.getEndpointForSegment(segmentId.getScopedName())
                                     .thenCompose((PravegaNodeUri uri) -> connectionFactory.establishConnection(flow, uri, responseProcessor));
         Futures.exceptionListener(connection, e -> closeConnection(e));
@@ -123,12 +129,25 @@ public class RawClient implements AutoCloseable {
     }
 
     public <T extends Request & WireCommand> CompletableFuture<Reply> sendRequest(long requestId, T request) {
+        return sendRequest(requestId, request, DEFAULT_RAWCLIENT_REQUEST_TIMEOUT);
+    }
+
+    private <T extends Request & WireCommand> CompletableFuture<Reply> sendRequest(long requestId, T request,
+                                                                                   Duration timeout) {
         return connection.thenCompose(c -> {
             log.debug("Sending request: {}", request);
             CompletableFuture<Reply> reply = new CompletableFuture<>();
             synchronized (lock) {
                 requests.put(requestId, reply);
             }
+            CompletableFuture<Void> timer = Futures.futureWithTimeout(timeout, connectionFactory.getInternalExecutor());
+            Futures.onTimeout(timer, ex -> {
+                synchronized (lock) {
+                    requests.remove(requestId);
+                }
+                reply.completeExceptionally(ex);
+                closeConnection(ex);
+            });
             c.sendAsync(request, cfe -> {
                 if (cfe != null) {
                     synchronized (lock) {
@@ -137,6 +156,7 @@ public class RawClient implements AutoCloseable {
                     reply.completeExceptionally(cfe);
                     closeConnection(cfe);
                 }
+                timer.cancel(true);
             });
             return reply;
         });
