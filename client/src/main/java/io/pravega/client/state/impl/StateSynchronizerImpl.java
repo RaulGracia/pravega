@@ -73,12 +73,12 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
     @Override
     public void fetchUpdates() {
         Revision revision = getRevisionToReadFrom(true);
-        log.trace("Fetching updates after {} ", revision);
+        log.info("Fetching updates after {}: {} ", segment, revision);
         try {
             val iter = client.readFrom(revision);
             while (iter.hasNext()) {
                 Entry<Revision, UpdateOrInit<StateT>> entry = iter.next();
-                log.trace("Found entry {} ", entry.getValue());
+                log.trace("Found entry {}: {} ", segment, entry.getValue());
                 if (entry.getValue().isInit()) {
                     InitialUpdate<StateT> init = entry.getValue().getInit();
                     if (isNewer(entry.getKey())) {
@@ -95,15 +95,15 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
     }
     
     private void handleTruncation() {
-        log.info(this + " Encountered truncation");
+        log.info(this + " Encountered truncation {}", segment);
         Revision revision = getRevisionToReadFrom(false);
-        log.trace("Fetching updates after {} ", revision);
+        log.info("Fetching updates after {}: {} ", segment, revision);
         boolean foundInit = false;
         val iter = client.readFrom(revision);
         while (!foundInit && iter.hasNext()) {
             Entry<Revision, UpdateOrInit<StateT>> entry = iter.next();
             if (entry.getValue().isInit()) {
-                log.trace("Found entry {} ", entry.getValue());
+                log.trace("Found entry {}: {} ", segment, entry.getValue());
                 InitialUpdate<StateT> init = entry.getValue().getInit();
                 if (isNewer(entry.getKey())) {
                     updateCurrentState(init.create(segment.getScopedStreamName(), entry.getKey()));
@@ -118,10 +118,13 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
     }
 
     private void applyUpdates(Revision readRevision, List<? extends Update<StateT>> updates) {
+        log.info("Entering applyUpdates {} {}: {}", segment, readRevision, updates);
         int i = 0;
         for (Update<StateT> update : updates) {
             StateT state = getState();
+            log.info("applyUpdates loop before lock: {}", update);
             synchronized (state) {
+                log.info("applyUpdates loop after lock: {}", update);
                 RevisionImpl newRevision = new RevisionImpl(segment, readRevision.asImpl().getOffsetInSegment(), i++);
                 if (newRevision.compareTo(state.getRevision()) > 0) {
                     updateCurrentState(update.applyTo(state, newRevision));
@@ -132,6 +135,7 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
 
     @Override
     public void updateState(UpdateGenerator<StateT> updateGenerator) {
+        log.info("Entering updateState {}", segment);
         conditionallyWrite(state -> {
             List<Update<StateT>> update = new ArrayList<>();
             updateGenerator.accept(state, update);
@@ -141,6 +145,7 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
 
     @Override
     public <ReturnT> ReturnT updateState(UpdateGeneratorFunction<StateT, ReturnT> updateGenerator) {
+        log.info("Entering updateState 2 {}", segment);
         AtomicReference<ReturnT> result = new AtomicReference<>();
         conditionallyWrite(state -> {
             List<Update<StateT>> update = new ArrayList<>();
@@ -152,13 +157,13 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
 
     @Override
     public void updateStateUnconditionally(Update<StateT> update) {
-        log.trace("Unconditionally Writing {} ", update);
+        log.info("Unconditionally Writing {}: {} ", segment, update);
         client.writeUnconditionally(new UpdateOrInit<>(Collections.singletonList(update)));
     }
 
     @Override
     public void updateStateUnconditionally(List<? extends Update<StateT>> update) {
-        log.trace("Unconditionally Writing {} ", update);
+        log.info("Unconditionally Writing {}: {} ", segment, update);
         client.writeUnconditionally(new UpdateOrInit<>(update));
     }
 
@@ -207,8 +212,10 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
     }
 
     private void conditionallyWrite(Function<StateT, UpdateOrInit<StateT>> generator) {
+        log.info("Entering conditionallyWrite {}", segment);
         while (true) {
             StateT state = getState();
+            log.info("conditionallyWrite getState {}: {}", segment, state);
             if (state == null) {
                 fetchUpdates();
                 state = getState();
@@ -216,14 +223,14 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
                     throw new IllegalStateException("Write was called before the state was initialized.");
                 }
             }
-            log.trace("Conditionally Writing {} ", state);
+            log.info("Conditionally Writing {}: {} ", segment, state);
             Revision revision = state.getRevision();
             UpdateOrInit<StateT> toWrite = generator.apply(state);
             if (toWrite == null) {
                 break;
             }
             Revision newRevision = client.writeConditionally(revision, toWrite);
-            log.trace("Conditionally write returned {} ", newRevision);
+            log.info("Conditionally write returned {}: {} ", segment, newRevision);
             if (newRevision == null) {
                 fetchUpdates();
             } else {
@@ -243,7 +250,7 @@ public class StateSynchronizerImpl<StateT extends Revisioned>
     @Synchronized
     private void updateCurrentState(StateT newValue) {
         if (newValue != null && isNewer(newValue.getRevision())) {
-            log.trace("Updating new state to {} ", newValue.getRevision());
+            log.info("Updating new state to {} ", newValue.getRevision());
             currentState = newValue;
         }
     }

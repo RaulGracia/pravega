@@ -204,6 +204,11 @@ project('shared:protocol') {
 }
 
 project('client') {
+
+    compileJava {
+        options.compilerArgs.remove("-Werror")
+    }
+
     dependencies {
         compile project(':common')
         compile project(':shared:authplugin')
@@ -537,6 +542,11 @@ project('shared:controller-api') {
 }
 
 project('controller') {
+
+    compileJava {
+        options.compilerArgs.remove("-Werror")
+    }
+
     sourceSets {
         main.resources.srcDirs += "$projectDir/src/conf"
         test.resources.srcDirs += "$rootDir/config"
