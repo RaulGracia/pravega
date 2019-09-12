@@ -31,6 +31,8 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.val;
+import lombok.Getter;
+import lombok.Setter;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -208,7 +210,7 @@ public class CacheManagerTests extends ThreadPooledTestSuite {
      * Tests the ability of the CacheManager to auto-unregister a client that was detected as having been closed.
      */
     @Test
-    public void testAutoUnregister() {
+    public void testClientAutoUnregister() {
         final CachePolicy policy = new CachePolicy(1024, Duration.ofHours(1), Duration.ofHours(1));
         @Cleanup
         val cache = new TestCache(policy.getMaxSize());
@@ -381,15 +383,59 @@ public class CacheManagerTests extends ThreadPooledTestSuite {
         Assert.assertEquals("Unexpected entry #3.", length2, cache.get(write2).getLength());
     }
 
+
+    /**
+     * Tests the ability to register, invoke and auto-unregister {@link CacheUtilizationProvider.CleanupListener} instances.
+     */
+    @Test
+    public void testCleanupListeners() {
+        final CachePolicy policy = new CachePolicy(1024, Duration.ofHours(1), Duration.ofHours(1));
+        @Cleanup
+        TestCacheManager cm = new TestCacheManager(policy, executorService());
+        TestClient client = new TestClient();
+        cm.register(client);
+        TestCleanupListener l1 = new TestCleanupListener();
+        TestCleanupListener l2 = new TestCleanupListener();
+        cm.registerCleanupListener(l1);
+        cm.registerCleanupListener(l2);
+        client.setUpdateGenerationsImpl((current, oldest) -> 1L); // We always remove something.
+
+        // In the first iteration, we should invoke both listeners.
+        client.setCacheStatus(policy.getMaxSize() + 1, 0, 0);
+        cm.runOneIteration();
+        Assert.assertEquals("Expected cleanup listener to be invoked the first time.", 1, l1.getCallCount());
+        Assert.assertEquals("Expected cleanup listener to be invoked the first time.", 1, l2.getCallCount());
+
+        // Close one of the listeners, and verify that only the other one is invoked now.
+        l2.setClosed(true);
+        client.setCacheStatus(policy.getMaxSize() + 1, 0, 1);
+        cm.runOneIteration();
+        Assert.assertEquals("Expected cleanup listener to be invoked the second time.", 2, l1.getCallCount());
+        Assert.assertEquals("Not expecting cleanup listener to be invoked the second time for closed listener.", 1, l2.getCallCount());
+    }
+
+    private static class TestCleanupListener implements CacheUtilizationProvider.CleanupListener {
+        @Getter
+        private int callCount = 0;
+        @Setter
+        @Getter
+        private boolean closed;
+
+        @Override
+        public void cacheCleanupComplete() {
+            this.callCount++;
+        }
+    }
+
     private static class TestClient implements CacheManager.Client {
         private CacheManager.CacheStatus currentStatus;
-        private BiFunction<Integer, Integer, Boolean> updateGenerationsImpl = (current, oldest) -> false;
+        private BiFunction<Integer, Integer, Long> updateGenerationsImpl = (current, oldest) -> -1L;
 
-        void setCacheStatus(int oldestGeneration, int newestGeneration) {
-            this.currentStatus = new CacheManager.CacheStatus(oldestGeneration, newestGeneration);
+        void setCacheStatus(long size, int oldestGeneration, int newestGeneration) {
+            this.currentStatus = new CacheManager.CacheStatus(size, oldestGeneration, newestGeneration);
         }
 
-        void setUpdateGenerationsImpl(BiFunction<Integer, Integer, Boolean> function) {
+        void setUpdateGenerationsImpl(BiFunction<Integer, Integer, Long> function) {
             this.updateGenerationsImpl = function;
         }
 
@@ -399,10 +445,11 @@ public class CacheManagerTests extends ThreadPooledTestSuite {
         }
 
         @Override
-        public boolean updateGenerations(int currentGeneration, int oldestGeneration) {
+        public long updateGenerations(int currentGeneration, int oldestGeneration) {
             return this.updateGenerationsImpl.apply(currentGeneration, oldestGeneration);
         }
     }
+
 
     @RequiredArgsConstructor
     @Getter
