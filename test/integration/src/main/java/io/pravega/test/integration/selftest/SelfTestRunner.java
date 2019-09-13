@@ -140,7 +140,6 @@ public class SelfTestRunner {
                 .include(ReadIndexConfig.builder()
                                         .with(ReadIndexConfig.MEMORY_READ_MIN_LENGTH, 128 * 1024))
                 .include(WriterConfig.builder()
-                        .with(WriterConfig.MAX_ITEMS_TO_READ_AT_ONCE, 10000)
                         .with(WriterConfig.FLUSH_THRESHOLD_BYTES, 64 * 1024 * 1024)
                         .with(WriterConfig.MAX_FLUSH_SIZE_BYTES, 64 * 1024 * 1024))
                 .include(ContainerConfig.builder()
