@@ -220,7 +220,7 @@ class ThrottlerCalculator {
         int getDelayMillis() {
             // We only throttle if we exceed the threshold. We increase the throttling amount in a linear fashion.
             int count = this.getCommitBacklogCount.get();
-            return getDelayMultiplier(count) * BASE_DELAY;
+            return getDelayMultiplier(count) * BASE_DELAY * 0;
         }
 
         @Override
