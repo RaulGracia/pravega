@@ -14,10 +14,14 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelPromise;
 import io.netty.util.concurrent.Future;
 import io.netty.util.concurrent.PromiseCombiner;
+import io.pravega.common.Timer;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.shared.protocol.netty.Append;
 import io.pravega.shared.protocol.netty.ConnectionFailedException;
 import io.pravega.shared.protocol.netty.WireCommand;
+
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lombok.Getter;
@@ -34,11 +38,17 @@ public class ClientConnectionImpl implements ClientConnection {
     @Getter
     private final FlowHandler nettyHandler;
     private final AtomicBoolean closed = new AtomicBoolean(false);
+    private FileWriter latencyLog = null;
 
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
         this.connectionName = connectionName;
         this.flowId = flowId;
         this.nettyHandler = nettyHandler;
+        try {
+            latencyLog = new FileWriter("ClientConnectionImpl.txt", true);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -51,8 +61,14 @@ public class ClientConnectionImpl implements ClientConnection {
     @Override
     public void send(Append append) throws ConnectionFailedException {
         checkClientConnectionClosed();
+        Timer timer = new Timer();
         nettyHandler.setRecentMessage();
         Futures.getAndHandleExceptions(nettyHandler.getChannel().writeAndFlush(append), ConnectionFailedException::new);
+        try {
+            latencyLog.write(System.nanoTime() + ", " + append.getEventNumber() + "," + timer.getElapsedNanos() + "\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override

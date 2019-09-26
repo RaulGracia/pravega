@@ -18,6 +18,7 @@ import io.pravega.client.netty.impl.ConnectionFactory;
 import io.pravega.client.stream.impl.Controller;
 import io.pravega.client.stream.impl.PendingEvent;
 import io.pravega.common.Exceptions;
+import io.pravega.common.Timer;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.util.Retry;
 import io.pravega.common.util.Retry.RetryWithBackoff;
@@ -37,11 +38,10 @@ import io.pravega.shared.protocol.netty.WireCommands.SegmentIsSealed;
 import io.pravega.shared.protocol.netty.WireCommands.SetupAppend;
 import io.pravega.shared.protocol.netty.WireCommands.WrongHost;
 import io.pravega.shared.segment.StreamSegmentNameUtils;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.ConcurrentSkipListMap;
@@ -84,6 +84,7 @@ class SegmentOutputStreamImpl implements SegmentOutputStream {
     @VisibleForTesting
     @Getter
     private final long requestId = Flow.create().asLong();
+    private FileWriter latencyLog = null;
 
     /**
      * Internal object that tracks the state of the connection.
@@ -431,6 +432,14 @@ class SegmentOutputStreamImpl implements SegmentOutputStream {
         //State is set to sealed during a Transaction abort and the segment writer should not throw an {@link IllegalStateException} in such a case.
         checkState(StreamSegmentNameUtils.isTransactionSegment(segmentName) || !state.isAlreadySealed(), "Segment: %s is already sealed", segmentName);
         synchronized (writeOrderLock) {
+            if (latencyLog == null) {
+                try {
+                    latencyLog = new FileWriter("SegmentOutputStreamImpl.txt", true);
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                }
+            }
+
             ClientConnection connection;
             try {
                 // if connection is null getConnection() establishes a connection and retransmits all events in inflight
@@ -444,8 +453,13 @@ class SegmentOutputStreamImpl implements SegmentOutputStream {
             long eventNumber = state.addToInflight(event);
             try {
                 Append append = new Append(segmentName, writerId, eventNumber, 1, event.getData(), null, requestId);
-                log.trace("Sending append request: {}", append);
+                Timer timer = new Timer();
                 connection.send(append);
+                try {
+                    latencyLog.write(System.nanoTime() + ", " + eventNumber + "," + timer.getElapsedNanos() + "\n");
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
             } catch (ConnectionFailedException e) {
                 log.warn("Connection " + writerId + " failed due to: ", e);
                 reconnect(); // As the message is inflight, this will perform the retransmission.

@@ -13,6 +13,8 @@ import io.pravega.common.ExponentialMovingAverage;
 import io.pravega.common.MathHelpers;
 import io.pravega.shared.protocol.netty.AppendBatchSizeTracker;
 
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -39,12 +41,18 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
     private final ExponentialMovingAverage eventSize = new ExponentialMovingAverage(1024, 0.1, true);
     private final ExponentialMovingAverage millisBetweenAppends = new ExponentialMovingAverage(10, 0.1, false);
     private final ExponentialMovingAverage appendsOutstanding = new ExponentialMovingAverage(2, 0.05, false);
+    private FileWriter statsLog = null;
 
     AppendBatchSizeTrackerImpl() {
         clock = System::currentTimeMillis;
         lastAppendTime = new AtomicLong(clock.get());
         lastAckNumber = new AtomicLong(0);
         lastAppendNumber = new AtomicLong(0);
+        try {
+            statsLog = new FileWriter("AppendBatchSizeTrackerImpl.txt", true);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -76,8 +84,14 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
         double appendsInMaxBatch = Math.max(1.0, MAX_BATCH_TIME_MILLIS / millisBetweenAppends.getCurrentValue());
         double targetAppendsOutstanding = MathHelpers.minMax(appendsOutstanding.getCurrentValue() * 0.5, 1.0,
                                                              appendsInMaxBatch);
-        return (int) MathHelpers.minMax((long) (targetAppendsOutstanding * eventSize.getCurrentValue()), 0,
+        int appendBlockSize = (int) MathHelpers.minMax((long) (targetAppendsOutstanding * eventSize.getCurrentValue()), 0,
                                         MAX_BATCH_SIZE);
+        try {
+            statsLog.write(System.nanoTime() + ", " + appendsInMaxBatch + ", " + targetAppendsOutstanding + ", " + appendBlockSize + "\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return appendBlockSize;
     }
 
     @Override

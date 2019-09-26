@@ -14,11 +14,14 @@ import io.netty.buffer.ByteBufOutputStream;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToByteEncoder;
+import io.pravega.common.Timer;
 import io.pravega.shared.protocol.netty.WireCommands.AppendBlock;
 import io.pravega.shared.protocol.netty.WireCommands.AppendBlockEnd;
 import io.pravega.shared.protocol.netty.WireCommands.Padding;
 import io.pravega.shared.protocol.netty.WireCommands.PartialEvent;
 import io.pravega.shared.protocol.netty.WireCommands.SetupAppend;
+
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.AbstractMap.SimpleImmutableEntry;
 import java.util.UUID;
@@ -83,6 +86,9 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
     private int currentBlockSize;
     private int bytesLeftInBlock;
     private final Map<UUID, Session> pendingWrites = new HashMap<>();
+    private final Map<Long, Timer> eventLatencies = new HashMap<>();
+    private FileWriter latencyLog = null;
+    private FileWriter writeSizeLog = null;
 
     @RequiredArgsConstructor
     private final class Session {
@@ -183,8 +189,16 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
 
     @Override
     protected void encode(ChannelHandlerContext ctx, Object msg, ByteBuf out) throws Exception {
-        log.trace("Encoding message to send over the wire {}", msg);
+        if (latencyLog == null) {
+            try {
+                latencyLog = new FileWriter("CommandEncoder.txt", true);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+
         if (msg instanceof Append) {
+            eventLatencies.put(((Append) msg).eventNumber, new Timer());
             Append append = (Append) msg;
             Session session = setupSegments.get(new SimpleImmutableEntry<>(append.segment, append.getWriterId()));
             validateAppend(append, session);
@@ -223,6 +237,8 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
                       session.write(data, out);
                 }
             }
+            latencyLog.write(System.nanoTime() + ", " + ((Append) msg).eventNumber + "," +
+                    eventLatencies.remove(((Append) msg).eventNumber).getElapsedNanos() + "\n");
         } else if (msg instanceof SetupAppend) {
             breakCurrentAppend(out);
             flushAll(out);
@@ -383,6 +399,14 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
         int endIdx = out.writerIndex();
         int fieldsSize = endIdx - startIdx - TYPE_PLUS_LENGTH_SIZE;
         out.setInt(startIdx + TYPE_SIZE, fieldsSize + blockSize);
+        if (writeSizeLog == null) {
+            try {
+                writeSizeLog = new FileWriter("CommandEncoderAppendSize.txt", true);
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
+        writeSizeLog.write(System.nanoTime() + ", " + startIdx + ", " + endIdx + ", " + (fieldsSize + blockSize) + "\n");
     }
 
     @SneakyThrows(IOException.class)
