@@ -198,7 +198,7 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
         }
 
         if (msg instanceof Append) {
-            eventLatencies.put(((Append) msg).eventNumber, new Timer());
+            // eventLatencies.put(((Append) msg).eventNumber, new Timer());
             Append append = (Append) msg;
             Session session = setupSegments.get(new SimpleImmutableEntry<>(append.segment, append.getWriterId()));
             validateAppend(append, session);
@@ -237,8 +237,8 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
                       session.write(data, out);
                 }
             }
-            latencyLog.write(System.nanoTime() + ", " + ((Append) msg).eventNumber + "," +
-                    eventLatencies.remove(((Append) msg).eventNumber).getElapsedNanos() + "\n");
+            /*latencyLog.write(System.nanoTime() + ", " + ((Append) msg).eventNumber + "," +
+                    eventLatencies.remove(((Append) msg).eventNumber).getElapsedNanos() + "\n");*/
         } else if (msg instanceof SetupAppend) {
             breakCurrentAppend(out);
             flushAll(out);

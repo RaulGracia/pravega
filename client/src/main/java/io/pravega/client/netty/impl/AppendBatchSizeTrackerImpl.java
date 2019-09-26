@@ -86,11 +86,11 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
                                                              appendsInMaxBatch);
         int appendBlockSize = (int) MathHelpers.minMax((long) (targetAppendsOutstanding * eventSize.getCurrentValue()), 0,
                                         MAX_BATCH_SIZE);
-        try {
+        /*try {
             statsLog.write(System.nanoTime() + ", " + appendsInMaxBatch + ", " + targetAppendsOutstanding + ", " + MAX_BATCH_SIZE + "\n");
         } catch (IOException e) {
             e.printStackTrace();
-        }
+        }*/
         return MAX_BATCH_SIZE;
     }
 
