@@ -91,7 +91,7 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
         } catch (IOException e) {
             e.printStackTrace();
         }*/
-        return MAX_BATCH_SIZE;
+        return appendBlockSize;
     }
 
     @Override

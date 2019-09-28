@@ -399,14 +399,14 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
         int endIdx = out.writerIndex();
         int fieldsSize = endIdx - startIdx - TYPE_PLUS_LENGTH_SIZE;
         out.setInt(startIdx + TYPE_SIZE, fieldsSize + blockSize);
-        if (writeSizeLog == null) {
+        /*if (writeSizeLog == null) {
             try {
                 writeSizeLog = new FileWriter("CommandEncoderAppendSize.txt", true);
             } catch (IOException ex) {
                 ex.printStackTrace();
             }
         }
-        writeSizeLog.write(System.nanoTime() + ", " + startIdx + ", " + endIdx + ", " + (fieldsSize + blockSize) + "\n");
+        writeSizeLog.write(System.nanoTime() + ", " + startIdx + ", " + endIdx + ", " + (fieldsSize + blockSize) + "\n");*/
     }
 
     @SneakyThrows(IOException.class)
