@@ -100,7 +100,7 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
     }
     
     private EventRead<Type> readNextEventInternal(long timeout) throws ReaderNotInReaderGroupException, TruncatedDataException {
-        long waitTime = Math.min(timeout, ReaderGroupStateManager.TIME_UNIT.toMillis());
+        long waitTime = Math.min(timeout, 10);
         Timer timer = new Timer();
         Segment segment = null;
         long offset = -1;
