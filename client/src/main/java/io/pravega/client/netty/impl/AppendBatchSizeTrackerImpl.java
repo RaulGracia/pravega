@@ -42,6 +42,7 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
     private final ExponentialMovingAverage millisBetweenAppends = new ExponentialMovingAverage(10, 0.1, false);
     private final ExponentialMovingAverage appendsOutstanding = new ExponentialMovingAverage(2, 0.05, false);
     private FileWriter statsLog = null;
+    private FileWriter statsLogAck = null;
 
     AppendBatchSizeTrackerImpl() {
         clock = System::currentTimeMillis;
@@ -50,6 +51,7 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
         lastAppendNumber = new AtomicLong(0);
         try {
             statsLog = new FileWriter("AppendBatchSizeTrackerImpl.txt", true);
+            statsLogAck = new FileWriter("AppendBatchSizeTrackerImplAck.txt", true);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -69,6 +71,11 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
     public void recordAck(long eventNumber) {
         lastAckNumber.getAndSet(eventNumber);
         appendsOutstanding.addNewSample(lastAppendNumber.get() - eventNumber);
+        try {
+            statsLogAck.write(System.nanoTime() + ", " + eventNumber + "\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     /**
@@ -86,11 +93,11 @@ class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
                                                              appendsInMaxBatch);
         int appendBlockSize = (int) MathHelpers.minMax((long) (targetAppendsOutstanding * eventSize.getCurrentValue()), 0,
                                         MAX_BATCH_SIZE);
-        /*try {
-            statsLog.write(System.nanoTime() + ", " + appendsInMaxBatch + ", " + targetAppendsOutstanding + ", " + MAX_BATCH_SIZE + "\n");
+        try {
+            statsLog.write(System.nanoTime() + ", " + appendsInMaxBatch + ", " + targetAppendsOutstanding + ", " + appendBlockSize + "\n");
         } catch (IOException e) {
             e.printStackTrace();
-        }*/
+        }
         return appendBlockSize;
     }
 

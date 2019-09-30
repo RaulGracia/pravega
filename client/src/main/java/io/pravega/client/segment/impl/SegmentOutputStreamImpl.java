@@ -455,11 +455,11 @@ class SegmentOutputStreamImpl implements SegmentOutputStream {
                 Append append = new Append(segmentName, writerId, eventNumber, 1, event.getData(), null, requestId);
                 Timer timer = new Timer();
                 connection.send(append);
-                /*try {
+                try {
                     latencyLog.write(System.nanoTime() + ", " + eventNumber + "," + timer.getElapsedNanos() + "\n");
                 } catch (IOException e) {
                     e.printStackTrace();
-                }*/
+                }
             } catch (ConnectionFailedException e) {
                 log.warn("Connection " + writerId + " failed due to: ", e);
                 reconnect(); // As the message is inflight, this will perform the retransmission.

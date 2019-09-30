@@ -61,14 +61,14 @@ public class ClientConnectionImpl implements ClientConnection {
     @Override
     public void send(Append append) throws ConnectionFailedException {
         checkClientConnectionClosed();
-        //Timer timer = new Timer();
+        Timer timer = new Timer();
         nettyHandler.setRecentMessage();
         Futures.getAndHandleExceptions(nettyHandler.getChannel().writeAndFlush(append), ConnectionFailedException::new);
-        /*try {
+        try {
             latencyLog.write(System.nanoTime() + ", " + append.getEventNumber() + "," + timer.getElapsedNanos() + "\n");
         } catch (IOException e) {
             e.printStackTrace();
-        }*/
+        }
     }
 
     @Override
