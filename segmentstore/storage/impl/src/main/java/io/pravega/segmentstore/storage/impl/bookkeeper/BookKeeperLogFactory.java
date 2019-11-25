@@ -139,7 +139,8 @@ public class BookKeeperLogFactory implements DurableDataLogFactory {
                 .setReadEntryTimeout(readTimeout)
                 .setGetBookieInfoTimeout(readTimeout)
                 .setClientConnectTimeoutMillis((int) this.config.getZkConnectionTimeout().toMillis())
-                .setZkTimeout((int) this.config.getZkConnectionTimeout().toMillis());
+                .setZkTimeout((int) this.config.getZkConnectionTimeout().toMillis())
+                .setThrottleValue(1);
 
         if (this.config.isTLSEnabled()) {
             config = (ClientConfiguration) config.setTLSProvider("OpenSSL");
