@@ -61,12 +61,12 @@ class ThrottlerCalculator {
      * Number of items in the Commit Backlog above which throttling will apply.
      */
     @VisibleForTesting
-    static final int COMMIT_BACKLOG_COUNT_THRESHOLD = 100;
+    static final int COMMIT_BACKLOG_COUNT_THRESHOLD = 10;
     /**
      * Number of items in the Commit Backlog at or above which the maximum throttling will apply.
      */
     @VisibleForTesting
-    static final int COMMIT_BACKLOG_COUNT_FULL_THROTTLE_THRESHOLD = 500;
+    static final int COMMIT_BACKLOG_COUNT_FULL_THROTTLE_THRESHOLD = 50;
 
     @Singular
     private final List<Throttler> throttlers;
