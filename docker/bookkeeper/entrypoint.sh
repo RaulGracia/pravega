@@ -55,7 +55,7 @@ while true; do
 	find /bk | sort > /bk/journal/$the_random-$counter-files.txt
         ls -Rlah /bk > /bk/journal/$the_random-$counter-file-info.txt
 	let counter=counter+1
-        sleep 5
+        sleep 30
 done &
 
 echo "creating directories for ledger and journal"
