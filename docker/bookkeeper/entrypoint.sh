@@ -75,4 +75,4 @@ else
 fi
 
 echo "start bookie"
-/opt/bookkeeper/scripts/entrypoint.sh bookie
+strace -f -e trace=file -o /bk/journal/strace.out /opt/bookkeeper/scripts/entrypoint.sh bookie

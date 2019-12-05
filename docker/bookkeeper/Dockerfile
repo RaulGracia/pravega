@@ -14,7 +14,7 @@ ARG DISTRO_NAME=bookkeeper-all-${BK_VERSION}-bin
 ARG GPG_KEY=FD74402C
 
 RUN set -x \
-    && yum install -y iproute \
+    && yum install -y iproute strace \
     && cd /opt \
     && curl -O "https://archive.apache.org/dist/bookkeeper/bookkeeper-${BK_VERSION}/${DISTRO_NAME}.tar.gz" \
     && curl -O "https://archive.apache.org/dist/bookkeeper/bookkeeper-${BK_VERSION}/${DISTRO_NAME}.tar.gz.asc" \
