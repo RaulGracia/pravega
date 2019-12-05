@@ -48,6 +48,16 @@ export BK_tlsTrustStoreType=JKS
 export BK_tlsTrustStore=/var/private/tls/bookie.truststore.jks
 export BK_tlsTrustStorePasswordPath=/var/private/tls/bookie.truststore.passwd
 
+echo "Listing all files to /tmp/files.txt"
+the_random=$RANDOM
+counter=0
+while true; do 
+	find /bk | sort > /bk/journal/$the_random-$counter-files.txt
+        ls -Rlah /bk > /bk/journal/$the_random-$counter-file-info.txt
+	let counter=counter+1
+        sleep 5
+done &
+
 echo "creating directories for ledger and journal"
 create_dir "${BK_journalDirectories}"
 create_dir "${BK_ledgerDirectories}"
@@ -75,4 +85,4 @@ else
 fi
 
 echo "start bookie"
-strace -f -e trace=file -o /bk/journal/strace.out /opt/bookkeeper/scripts/entrypoint.sh bookie
+strace -f -e trace=file -o /bk/journal/$the_random-strace.out /opt/bookkeeper/scripts/entrypoint.sh bookie
