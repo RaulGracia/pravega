@@ -141,7 +141,6 @@ public class BookKeeperLogFactory implements DurableDataLogFactory {
                 .setEnableDigestTypeAutodetection(true)
                 .setUseV2WireProtocol(true)
                 .setNettyMaxFrameSizeBytes(5 * 1024 * 1024)
-                .setClientTcpNoDelay(true)
                 .setAddEntryTimeout(writeTimeout)
                 .setReadEntryTimeout(readTimeout)
                 .setGetBookieInfoTimeout(readTimeout)
