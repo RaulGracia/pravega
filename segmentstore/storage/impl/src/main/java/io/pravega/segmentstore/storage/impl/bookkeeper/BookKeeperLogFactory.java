@@ -136,6 +136,11 @@ public class BookKeeperLogFactory implements DurableDataLogFactory {
         int writeTimeout = (int) Math.ceil(this.config.getBkWriteTimeoutMillis() / 1000.0);
         int readTimeout = (int) Math.ceil(this.config.getBkReadTimeoutMillis() / 1000.0);
         ClientConfiguration config = new ClientConfiguration()
+                .setThrottleValue(0)
+                .setNumChannelsPerBookie(16)
+                .setEnableDigestTypeAutodetection(true)
+                .setUseV2WireProtocol(true)
+                .setNettyMaxFrameSizeBytes(5 * 1024 * 1024)
                 .setClientTcpNoDelay(true)
                 .setAddEntryTimeout(writeTimeout)
                 .setReadEntryTimeout(readTimeout)
