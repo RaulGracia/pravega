@@ -205,7 +205,7 @@ public class TestConfig {
         this.enableSecurity = properties.getBoolean(ENABLE_SECURITY);
         this.bookieLedgersDir = properties.get(BOOKIE_LEDGERS_DIR);
         this.storageDir = properties.get(STORAGE_DIR);
-        checkOverlappingPorts();
+        //checkOverlappingPorts();
     }
 
     //endregion
