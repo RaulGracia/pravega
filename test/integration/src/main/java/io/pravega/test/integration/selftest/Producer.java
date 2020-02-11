@@ -91,11 +91,12 @@ class Producer<T extends ProducerUpdate> extends Actor {
                 this::canLoop,
                 this::runOneIteration,
                 this.executorService);*/
-        while (canLoop()) {
-            runOneIteration();
-            Exceptions.handleInterrupted(() -> Thread.sleep(3));
-        }
-        return CompletableFuture.completedFuture(null);
+        return CompletableFuture.runAsync(() -> {
+            while (canLoop()) {
+                runOneIteration();
+                Exceptions.handleInterrupted(()-> Thread.sleep(3));
+            }
+        }, this.executorService);
     }
 
     //endregion
