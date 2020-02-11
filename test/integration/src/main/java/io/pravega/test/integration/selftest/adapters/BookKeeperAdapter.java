@@ -185,7 +185,7 @@ class BookKeeperAdapter extends StoreAdapter {
             }
         };
         lh.asyncAddEntry(s.array(), s.arrayOffset(), s.getLength(), addCallback, null);
-        return result;
+        return CompletableFuture.runAsync(() -> Exceptions.handleInterrupted(() -> Thread.sleep(3)));
     }
 
     @Override
