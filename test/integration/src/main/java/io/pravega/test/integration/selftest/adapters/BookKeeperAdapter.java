@@ -53,8 +53,8 @@ class BookKeeperAdapter extends StoreAdapter {
     private final BookKeeperConfig bkConfig;
     private final ScheduledExecutorService executor;
     private final ConcurrentHashMap<String, LedgerHandle> ledgers;
-    private final Thread stopBookKeeperProcess;
-    private Process bookKeeperService;
+    //private final Thread stopBookKeeperProcess;
+    //private Process bookKeeperService;
     private CuratorFramework zkClient;
     private BookKeeperLogFactory logFactory;
 
@@ -75,8 +75,8 @@ class BookKeeperAdapter extends StoreAdapter {
         this.executor = Preconditions.checkNotNull(executor, "executor");
         Preconditions.checkArgument(testConfig.getBookieCount() > 0, "BookKeeperAdapter requires at least one Bookie.");
         this.ledgers = new ConcurrentHashMap<>();
-        this.stopBookKeeperProcess = new Thread(this::stopBookKeeper);
-        Runtime.getRuntime().addShutdownHook(this.stopBookKeeperProcess);
+        //this.stopBookKeeperProcess = new Thread(this::stopBookKeeper);
+        //Runtime.getRuntime().addShutdownHook(this.stopBookKeeperProcess);
     }
 
     //endregion
@@ -92,12 +92,12 @@ class BookKeeperAdapter extends StoreAdapter {
     @Override
     protected void startUp() throws Exception {
         // Start BookKeeper.
-        this.bookKeeperService = BookKeeperAdapter.startBookKeeperOutOfProcess(this.testConfig, this.logId);
+        //this.bookKeeperService = BookKeeperAdapter.startBookKeeperOutOfProcess(this.testConfig, this.logId);
 
         // Create a ZK client.
         this.zkClient = CuratorFrameworkFactory
                 .builder()
-                .connectString("localhost:" + this.testConfig.getZkPort())
+                .connectString(this.testConfig.getZkIp() + ":" + this.testConfig.getZkPort())
                 .namespace("pravega")
                 .retryPolicy(new ExponentialBackoffRetry(1000, 5))
                 .sessionTimeoutMs(5000)
@@ -128,14 +128,14 @@ class BookKeeperAdapter extends StoreAdapter {
             this.logFactory = null;
         }
 
-        stopBookKeeper();
+        //stopBookKeeper();
         CuratorFramework zkClient = this.zkClient;
         if (zkClient != null) {
             zkClient.close();
             this.zkClient = null;
         }
 
-        Runtime.getRuntime().removeShutdownHook(this.stopBookKeeperProcess);
+        //Runtime.getRuntime().removeShutdownHook(this.stopBookKeeperProcess);
     }
 
     @Override
@@ -259,14 +259,14 @@ class BookKeeperAdapter extends StoreAdapter {
         return this.logFactory.getBookKeeperClient();
     }
 
-    private void stopBookKeeper() {
+    /*private void stopBookKeeper() {
         val bk = this.bookKeeperService;
         if (bk != null) {
             bk.destroyForcibly();
             log("Bookies shut down.");
             this.bookKeeperService = null;
         }
-    }
+    }*/
 
     /**
      * Starts a BookKeeper (using a number of bookies) along with a ZooKeeper out-of-process.

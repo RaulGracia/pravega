@@ -108,7 +108,7 @@ public class SelfTestRunner {
         b.include(ServiceConfig.builder()
                                .with(ServiceConfig.CONTAINER_COUNT, testConfig.getContainerCount()));
         b.include(BookKeeperConfig.builder()
-                                  .with(BookKeeperConfig.ZK_ADDRESS, TestConfig.LOCALHOST + ":" + testConfig.getZkPort())
+                                  .with(BookKeeperConfig.ZK_ADDRESS, testConfig.getZkIp() + ":" + testConfig.getZkPort())
                                   .with(BookKeeperConfig.BK_ACK_QUORUM_SIZE, bkWriteQuorum)
                                   .with(BookKeeperConfig.BK_WRITE_QUORUM_SIZE, bkWriteQuorum)
                                   .with(BookKeeperConfig.BK_ENSEMBLE_SIZE, bkWriteQuorum));
@@ -151,7 +151,7 @@ public class SelfTestRunner {
                 // This is for those tests that use BookKeeper for Tier1.
                 .include(BookKeeperConfig.builder()
                                          .with(BookKeeperConfig.BK_LEDGER_MAX_SIZE, Integer.MAX_VALUE)
-                                         .with(BookKeeperConfig.ZK_METADATA_PATH, "/pravega/selftest/segmentstore/containers")
+                                         .with(BookKeeperConfig.ZK_METADATA_PATH, "/pravega/selftester/segmentstore/containers")
                         .with(BookKeeperConfig.BK_LEDGER_PATH, TestConfig.BK_ZK_LEDGER_PATH));
     }
 

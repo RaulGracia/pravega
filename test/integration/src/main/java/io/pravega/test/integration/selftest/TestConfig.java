@@ -31,7 +31,7 @@ public class TestConfig {
     //region Config Names
 
     public static final String DEFAULT_CONFIG_FILE_NAME = "selftest.config.properties";
-    public static final String BK_ZK_LEDGER_PATH = "/pravega/selftest/bookkeeper/ledgers";
+    public static final String BK_ZK_LEDGER_PATH = "/pravega/pravega-cluster/bookkeeper/ledgers";
     public static final String LOCALHOST = InetAddress.getLoopbackAddress().getHostName();
     static final Property<Integer> OPERATION_COUNT = Property.named("operationCount", 100 * 1000);
     static final Property<Integer> CONTAINER_COUNT = Property.named("containerCount", 1);
@@ -54,7 +54,7 @@ public class TestConfig {
     static final Property<Integer> WARMUP_PERCENTAGE = Property.named("warmupPercentage", 10);
     static final Property<Boolean> READS_ENABLED = Property.named("reads", true);
     static final Property<Boolean> METRICS_ENABLED = Property.named("metrics", false);
-    static final Property<Integer> BOOKIE_COUNT = Property.named("bookieCount", 1);
+    static final Property<Integer> BOOKIE_COUNT = Property.named("bookieCount", 3);
     static final Property<Integer> CONTROLLER_COUNT = Property.named("controllerCount", 1);
     static final Property<Integer> SEGMENT_STORE_COUNT = Property.named("segmentStoreCount", 1);
     static final Property<String> CONTROLLER_HOST = Property.named("controllerHost", LOCALHOST);
@@ -62,9 +62,10 @@ public class TestConfig {
     static final Property<Boolean> PAUSE_BEFORE_EXIT = Property.named("pauseBeforeExit", false);
     static final Property<String> BOOKIE_LEDGERS_DIR = Property.named("bkLedgersDir", "");
     static final Property<String> STORAGE_DIR = Property.named("storageDir", "/tmp/pravega/storage");
-    private static final Property<Integer> ZK_PORT = Property.named("zkPort", 9000);
-    private static final Property<Integer> BK_BASE_PORT = Property.named("bkBasePort", 9100);
-    private static final Property<Integer> SEGMENT_STORE_BASE_PORT = Property.named("segmentStorePort", 9300);
+    private static final Property<String> ZK_IP = Property.named("zkIp", "localhost");
+    private static final Property<Integer> ZK_PORT = Property.named("zkPort", 2181);
+    private static final Property<Integer> BK_BASE_PORT = Property.named("bkBasePort", 3181);
+    private static final Property<Integer> SEGMENT_STORE_BASE_PORT = Property.named("segmentStorePort", 12345);
     private static final Property<Boolean> ENABLE_SECURITY = Property.named("enableSecurity", false);
     private static final String TEST_OUTPUT_PATH = "/tmp/pravega";
     private static final String LOG_PATH_FORMAT = TEST_OUTPUT_PATH + "/selftest.%s.log";
@@ -119,6 +120,8 @@ public class TestConfig {
     @Getter
     private final int segmentStoreCount;
     private final int bkBasePort;
+    @Getter
+    private final String zkIp;
     @Getter
     private final int zkPort;
     @Getter
@@ -190,6 +193,7 @@ public class TestConfig {
         this.controllerCount = properties.getInt(CONTROLLER_COUNT);
         this.segmentStoreCount = properties.getInt(SEGMENT_STORE_COUNT);
         this.bkBasePort = properties.getInt(BK_BASE_PORT);
+        this.zkIp = properties.get(ZK_IP);
         this.zkPort = properties.getInt(ZK_PORT);
         this.controllerHost = properties.get(CONTROLLER_HOST);
         this.controllerBasePort = properties.getInt(CONTROLLER_BASE_PORT);
@@ -262,7 +266,7 @@ public class TestConfig {
      */
     public int getBkPort(int bookieId) {
         Preconditions.checkElementIndex(bookieId, this.bookieCount, "bookieId must be less than bookieCount.");
-        return this.bkBasePort + bookieId;
+        return this.bkBasePort;
     }
 
     /**

@@ -154,7 +154,7 @@ class SegmentStoreAdapter extends StoreAdapter {
         }
 
         if (this.config.getBookieCount() > 0) {
-            this.bookKeeperService = BookKeeperAdapter.startBookKeeperOutOfProcess(this.config, this.logId);
+            //this.bookKeeperService = BookKeeperAdapter.startBookKeeperOutOfProcess(this.config, this.logId);
         }
 
         this.serviceBuilder.initialize();
