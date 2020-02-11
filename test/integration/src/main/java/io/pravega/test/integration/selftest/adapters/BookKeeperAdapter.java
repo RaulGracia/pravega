@@ -28,7 +28,6 @@ import io.pravega.test.integration.selftest.TestLogger;
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -58,7 +57,6 @@ class BookKeeperAdapter extends StoreAdapter {
     //private Process bookKeeperService;
     private CuratorFramework zkClient;
     private BookKeeperLogFactory logFactory;
-    private byte[] payload = new byte[1024 * 1024];
 
     //endregion
 
@@ -177,7 +175,7 @@ class BookKeeperAdapter extends StoreAdapter {
             return Futures.failedFuture(new StreamSegmentNotExistsException(logName));
         }
 
-        //ArrayView s = event.getSerialization();
+        ArrayView s = event.getSerialization();
         val result = new CompletableFuture<Void>();
         AsyncCallback.AddCallback addCallback = (rc, handle, entryId, ctx) -> {
             if (rc == BKException.Code.OK) {
@@ -186,8 +184,8 @@ class BookKeeperAdapter extends StoreAdapter {
                 result.completeExceptionally(BKException.create(rc));
             }
         };
-        lh.asyncAddEntry(payload, 0, payload.length, addCallback, null);
-        return CompletableFuture.completedFuture(null);
+        lh.asyncAddEntry(s.array(), s.arrayOffset(), s.getLength(), addCallback, null);
+        return result;
     }
 
     @Override

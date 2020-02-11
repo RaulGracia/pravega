@@ -87,10 +87,15 @@ class Producer<T extends ProducerUpdate> extends Actor {
     @Override
     protected CompletableFuture<Void> run() {
         this.canContinue.set(true);
-        return Futures.loop(
+        /*return Futures.loop(
                 this::canLoop,
                 this::runOneIteration,
-                this.executorService);
+                this.executorService);*/
+        while (canLoop()) {
+            runOneIteration();
+            Exceptions.handleInterrupted(() -> Thread.sleep(3));
+        }
+        return CompletableFuture.completedFuture(null);
     }
 
     //endregion
