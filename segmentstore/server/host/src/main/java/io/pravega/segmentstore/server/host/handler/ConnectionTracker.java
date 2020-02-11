@@ -30,7 +30,7 @@ public class ConnectionTracker {
     /**
      * Maximum allowed outstanding bytes from a single connection. If we exceed this value, that connection should be paused.
      */
-    private static final int DEFAULT_SINGLE_CONNECTION_MAX_OUTSTANDING = DEFAULT_ALL_CONNECTIONS_MAX_OUTSTANDING_BYTES;
+    private static final int DEFAULT_SINGLE_CONNECTION_MAX_OUTSTANDING = DEFAULT_ALL_CONNECTIONS_MAX_OUTSTANDING_BYTES / 4;
 
     private final int allConnectionsLimit;
     private final int singleConnectionDoubleLimit;
