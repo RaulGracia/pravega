@@ -145,7 +145,7 @@ class Producer<T extends ProducerUpdate> extends Actor {
             }));
         }
 
-        return CompletableFuture.runAsync(() -> CompletableFuture.anyOf(futures.toArray(new CompletableFuture[futures.size()])));
+        return Futures.allOf(futures);
     }
 
 
