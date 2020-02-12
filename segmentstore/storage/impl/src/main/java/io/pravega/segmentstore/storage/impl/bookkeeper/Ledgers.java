@@ -31,7 +31,7 @@ final class Ledgers {
      * How many ledgers to fence out (from the end of the list) when acquiring lock.
      */
     static final int MIN_FENCE_LEDGER_COUNT = 2;
-    private static final BookKeeper.DigestType LEDGER_DIGEST_TYPE = BookKeeper.DigestType.MAC;
+    private static final BookKeeper.DigestType LEDGER_DIGEST_TYPE = BookKeeper.DigestType.CRC32;
 
     /**
      * Creates a new Ledger in BookKeeper.
