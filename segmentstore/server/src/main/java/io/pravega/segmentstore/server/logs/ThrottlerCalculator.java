@@ -36,7 +36,7 @@ class ThrottlerCalculator {
      * Maximum delay (millis) we are willing to introduce in order to perform batching.
      */
     @VisibleForTesting
-    static final int MAX_BATCHING_DELAY_MILLIS = 50;
+    static final int MAX_BATCHING_DELAY_MILLIS = 2;
     /**
      * Maximum delay (millis) we are willing to introduce in order to throttle the incoming operations.
      */
