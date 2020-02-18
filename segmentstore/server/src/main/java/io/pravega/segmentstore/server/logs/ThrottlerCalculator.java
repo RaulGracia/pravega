@@ -211,14 +211,14 @@ class ThrottlerCalculator {
         @Override
         int getDelayMillis() {
             QueueStats stats = this.getQueueStats.get();
-
             // The higher the average fill rate, the more efficient use we make of the available capacity. As such, for high
             // fill ratios we don't want to wait too long.
             double fillRatioAdj = MathHelpers.minMax(1 - stats.getAverageItemFillRatio(), 0, 1);
-
+            //fillRatioAdj = Math.pow(fillRatioAdj, 2);
             // Finally, we use the the ExpectedProcessingTime to give us a baseline as to how long items usually take to process.
-            int delayMillis = (int) Math.round(stats.getExpectedProcessingTimeMillis() * fillRatioAdj);
-            return Math.min(delayMillis, MAX_BATCHING_DELAY_MILLIS);
+            int delayMillis = stats.getExpectedProcessingTimeMillis();
+            delayMillis = Math.min(delayMillis, MAX_BATCHING_DELAY_MILLIS);
+            return (int) Math.round(delayMillis * fillRatioAdj);
         }
 
         @Override
