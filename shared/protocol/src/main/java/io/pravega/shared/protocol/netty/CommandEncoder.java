@@ -142,7 +142,7 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
          */
         private void conditionalFlush(ByteBuf out) {
             if ((pendingBytes > MAX_DATA_SIZE) || (eventCount > MAX_EVENTS)) {
-                log.info("FLUSHING BATCH: " + pendingList.size());
+                log.error("FLUSHING BATCH: " + pendingList.size());
                 breakCurrentAppend(out);
                 flush(out);
             }
