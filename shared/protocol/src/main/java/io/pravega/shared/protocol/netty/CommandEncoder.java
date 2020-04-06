@@ -214,12 +214,13 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
                     if (bytesLeftInBlock == 0) {
                         completeAppend(null, out);
                         flushRequired();
+                        log.error("FLUSH 0: " + session.pendingList.size() + " bytesLeft: " + bytesLeftInBlock);
                     }
                 } else {
                     session.record(append);
                     session.write(data, out);
                     session.flush(out);
-                    log.error("FLUSH 1: " + session.pendingList.size());
+                    log.error("FLUSH 1: " + session.pendingList.size() + " bytesLeft: " + bytesLeftInBlock);
                 }
             } else {
                 session.record(append);
@@ -231,7 +232,7 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
                         completeAppend(dataInsideBlock, data, out);
                         flushAll(out);
                         flushRequired();
-                        log.error("FLUSH 2: " + session.pendingList.size());
+                        log.error("FLUSH 2: " + session.pendingList.size() + " bytesLeft: " + bytesLeftInBlock);
                     }
                 } else {
                       session.write(data, out);
