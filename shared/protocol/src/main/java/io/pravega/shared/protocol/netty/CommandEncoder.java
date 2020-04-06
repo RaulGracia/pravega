@@ -95,7 +95,7 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
 
     @RequiredArgsConstructor
     private final class Session {
-        private static final int MAX_EVENTS = 50000;
+        private static final int MAX_EVENTS = 500;
         private static final int MAX_DATA_SIZE = 1024 * 1024; // 1MB
         private final UUID id;
         private final long requestId;
@@ -219,6 +219,7 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
                     session.record(append);
                     session.write(data, out);
                     session.flush(out);
+                    log.error("FLUSH 1: " + session.pendingList.size());
                 }
             } else {
                 session.record(append);
@@ -230,6 +231,7 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
                         completeAppend(dataInsideBlock, data, out);
                         flushAll(out);
                         flushRequired();
+                        log.error("FLUSH 2: " + session.pendingList.size());
                     }
                 } else {
                       session.write(data, out);
