@@ -225,6 +225,7 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
             } else {
                 session.record(append);
                 if (isChannelOwner(append.getWriterId(), append.getSegment())) {
+                    log.error("PRE FLUSH 2 avail bytes: " + data.readableBytes() + " bytesLeft: " + bytesLeftInBlock);
                     if (bytesLeftInBlock > data.readableBytes()) {
                         continueAppend(data, out);
                     } else {
