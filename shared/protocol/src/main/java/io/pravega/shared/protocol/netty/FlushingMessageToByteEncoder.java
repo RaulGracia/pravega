@@ -13,16 +13,19 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.MessageToByteEncoder;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 abstract class FlushingMessageToByteEncoder<I> extends MessageToByteEncoder<I> {
 
     private final AtomicBoolean shouldFlush = new AtomicBoolean(false);
+    private final AtomicInteger flushCounter = new AtomicInteger(0);
     
     @Override
     public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
         super.write(ctx, msg, promise);
         if (shouldFlush.compareAndSet(true, false)) {
             ctx.flush();
+            //System.err.println("FlushingMessageToByteEncoder flushes: " + System.currentTimeMillis() + "\t" + flushCounter.addAndGet(1));
         }
     }
     

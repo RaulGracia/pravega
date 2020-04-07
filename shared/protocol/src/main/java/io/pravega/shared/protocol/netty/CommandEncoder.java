@@ -142,7 +142,6 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
          */
         private void conditionalFlush(ByteBuf out) {
             if ((pendingBytes > MAX_DATA_SIZE) || (eventCount > MAX_EVENTS)) {
-                log.error("FLUSHING BATCH: " + pendingList.size());
                 breakCurrentAppend(out);
                 flush(out);
             }
@@ -214,26 +213,22 @@ public class CommandEncoder extends FlushingMessageToByteEncoder<Object> {
                     if (bytesLeftInBlock == 0) {
                         completeAppend(null, out);
                         flushRequired();
-                        //log.error("FLUSH 0: " + session.pendingList.size() + " bytesLeft: " + bytesLeftInBlock);
                     }
                 } else {
                     session.record(append);
                     session.write(data, out);
                     session.flush(out);
-                    //log.error("FLUSH 1: " + session.pendingList.size() + " bytesLeft: " + bytesLeftInBlock);
                 }
             } else {
                 session.record(append);
                 if (isChannelOwner(append.getWriterId(), append.getSegment())) {
-                    //log.error("PRE FLUSH 2 avail bytes: " + data.readableBytes() + " bytesLeft: " + bytesLeftInBlock);
                     if (bytesLeftInBlock > data.readableBytes()) {
                         continueAppend(data, out);
                     } else {
                         ByteBuf dataInsideBlock = data.readSlice(bytesLeftInBlock);
                         completeAppend(dataInsideBlock, data, out);
-                        //flushAll(out);
+                        flushAll(out);
                         flushRequired();
-                        //log.error("FLUSH 2: " + session.pendingList.size() + " bytesLeft: " + bytesLeftInBlock);
                     }
                 } else {
                       session.write(data, out);
