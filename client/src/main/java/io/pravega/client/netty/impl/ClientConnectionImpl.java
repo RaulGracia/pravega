@@ -68,7 +68,6 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicBoolean shouldFlush = new AtomicBoolean(false);
     private final AtomicLong tokenCounter = new AtomicLong(0);
     private final AtomicLong lastIssuedToken = new AtomicLong(0);
-    private final AtomicLong scheduleCounter = new AtomicLong(0);
 
     @SneakyThrows
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
@@ -141,7 +140,7 @@ public class ClientConnectionImpl implements ClientConnection {
         // Mark the batch as candidate to flush.
         if (batchMode.get() && shouldFlush.compareAndSet(false, true)) {
             channelPromise.channel().eventLoop().schedule(new BlockTimeouter(tokenCounter.get()),
-                    10, TimeUnit.MILLISECONDS);
+                    AppendBatchSizeTracker.MAX_BATCH_TIME_MILLIS, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -268,7 +267,8 @@ public class ClientConnectionImpl implements ClientConnection {
         @SneakyThrows
         @Override
         public void run() {
-            if (batchMode.get() && tokenCounter.get() == token) {
+            System.err.println("tokenCounter: " + tokenCounter.get() + ", token: " + token);
+            if (tokenCounter.get() == token) {
                 flushBatch();
             }
         }
