@@ -69,10 +69,12 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicLong tokenCounter = new AtomicLong(0);
     private final AtomicLong lastIssuedToken = new AtomicLong(0);
 
+    @SneakyThrows
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
         this.connectionName = connectionName;
         this.flowId = flowId;
         this.nettyHandler = nettyHandler;
+        this.nettyHandler.getChannel().eventLoop().scheduleAtFixedRate(this::updateIORate, 100, 500, TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -245,10 +247,10 @@ public class ClientConnectionImpl implements ClientConnection {
             final double currentEventRate = (eventCount.get() / (System.currentTimeMillis() - lastRateCalculation.get())) * 1000.0;
             final double currentByteRate = (byteCount.get() / (System.currentTimeMillis() - lastRateCalculation.get())) * 1000.0;
             if (currentEventRate >= BATCH_MODE_EVENT_THRESHOLD || currentByteRate >= BATCH_MODE_BYTE_THRESHOLD) {
-                System.err.println("BATCH MODE ON");
+                //System.err.println("BATCH MODE ON");
                 batchMode.set(true);
             } else {
-                System.err.println("BATCH MODE OFF");
+                //System.err.println("BATCH MODE OFF");
                 batchMode.set(false);
             }
             eventCount.set(0);
@@ -276,7 +278,6 @@ public class ClientConnectionImpl implements ClientConnection {
         @SneakyThrows
         @Override
         public void run() {
-            updateIORate();
             if (batchMode.get() && tokenCounter.get() == token) {
                 //System.err.println("timeout flush: " + token);
                 flushBatch();
