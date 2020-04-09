@@ -50,6 +50,7 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Semaphore throttle = new Semaphore(AppendBatchSizeTracker.MAX_BATCH_SIZE);
 
+    private final AppendBatchSizeTracker appendBatchSizeTracker;
     @GuardedBy("appends")
     private final List<CommandAndPromise> appends = new ArrayList<>();
     @GuardedBy("appends")
@@ -60,10 +61,11 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicLong tokenCounter = new AtomicLong(0);
     private final AtomicLong lastIssuedToken = new AtomicLong(0);
 
-    public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
+    public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler, AppendBatchSizeTracker batchSizeTracker) {
         this.connectionName = connectionName;
         this.flowId = flowId;
         this.nettyHandler = nettyHandler;
+        this.appendBatchSizeTracker = batchSizeTracker;
     }
 
     @Override
@@ -99,7 +101,9 @@ public class ClientConnectionImpl implements ClientConnection {
             }
         });
         writeToBatch(cmd, promise);
-        if (batchSizeBytes >= AppendBatchSizeTracker.MAX_BATCH_SIZE || batchSizeEvents >= AppendBatchSizeTracker.MAX_BATCH_EVENTS) {
+        if (appendBatchSizeTracker.getAppendBlockSize() < 1000
+            || batchSizeBytes >= AppendBatchSizeTracker.MAX_BATCH_SIZE
+            || batchSizeEvents >= AppendBatchSizeTracker.MAX_BATCH_EVENTS) {
             flushBatch();
         }
     }
@@ -129,6 +133,7 @@ public class ClientConnectionImpl implements ClientConnection {
                 batchSizeEvents++;
             }
         }
+        //System.err.println(appendBatchSizeTracker.getAppendBlockSize());
         // Mark the batch as candidate to flush.
         if (shouldFlush.compareAndSet(false, true) && lastIssuedToken.get() != tokenCounter.get()) {
             channelPromise.channel().eventLoop().schedule(new BlockTimeouter(tokenCounter.get()),

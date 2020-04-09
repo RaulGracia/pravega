@@ -29,17 +29,17 @@ public class StartWriter {
         @Cleanup
         StreamManager streamManager = StreamManager.create(URI.create("tcp://localhost:9090"));
         streamManager.createScope(StartLocalService.SCOPE);
-        streamManager.createStream(StartLocalService.SCOPE, StartLocalService.STREAM_NAME + "16",
-                StreamConfiguration.builder().scalingPolicy(ScalingPolicy.fixed(16)).build());
+        streamManager.createStream(StartLocalService.SCOPE, StartLocalService.STREAM_NAME,
+                StreamConfiguration.builder().scalingPolicy(ScalingPolicy.fixed(1)).build());
         EventStreamClientFactory clientFactory = EventStreamClientFactory.withScope(StartLocalService.SCOPE, ClientConfig.builder().build());
         @Cleanup
-        EventStreamWriter<String> writer = clientFactory.createEventWriter(StartLocalService.STREAM_NAME + "16", new JavaSerializer<>(),
+        EventStreamWriter<String> writer = clientFactory.createEventWriter(StartLocalService.STREAM_NAME, new JavaSerializer<>(),
                                                                            EventWriterConfig.builder()
                                                                                             .transactionTimeoutTime(60000)
                                                                                             .build());
         String event = "\n Non-transactional Publish \n";
         long iniTime = System.currentTimeMillis();
-        double events = 100000.0;
+        double events = 1000000.0;
         for (int i = 0; i < events; i++) {
             //System.err.println("Writing event: " + i);
             writer.writeEvent(event);
