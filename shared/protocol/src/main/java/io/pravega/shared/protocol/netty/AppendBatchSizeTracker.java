@@ -12,6 +12,8 @@ package io.pravega.shared.protocol.netty;
 public interface AppendBatchSizeTracker {
 
     static final int MAX_BATCH_SIZE = WireCommands.MAX_WIRECOMMAND_SIZE / 2;
+    static final int MAX_BATCH_EVENTS = 50000;
+    static final int MAX_BATCH_TIME_MILLIS = 1000;
     
     /**
      * Records that an append has been sent.

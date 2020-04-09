@@ -11,7 +11,6 @@ package io.pravega.client.netty.impl;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelPromise;
 import io.netty.channel.EventLoop;
@@ -20,15 +19,20 @@ import io.netty.util.concurrent.PromiseCombiner;
 import io.pravega.common.Exceptions;
 import io.pravega.common.Timer;
 import io.pravega.shared.metrics.MetricNotifier;
-import io.pravega.shared.protocol.netty.Append;
-import io.pravega.shared.protocol.netty.AppendBatchSizeTracker;
-import io.pravega.shared.protocol.netty.ConnectionFailedException;
-import io.pravega.shared.protocol.netty.WireCommand;
+import io.pravega.shared.protocol.netty.*;
+
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
+import net.jcip.annotations.GuardedBy;
 
 import static io.pravega.shared.NameUtils.segmentTags;
 import static io.pravega.shared.metrics.ClientMetricKeys.CLIENT_APPEND_LATENCY;
@@ -45,6 +49,16 @@ public class ClientConnectionImpl implements ClientConnection {
     private final FlowHandler nettyHandler;
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Semaphore throttle = new Semaphore(AppendBatchSizeTracker.MAX_BATCH_SIZE);
+
+    @GuardedBy("appends")
+    private final List<CommandAndPromise> appends = new ArrayList<>();
+    @GuardedBy("appends")
+    private long batchSizeBytes = 0;
+    @GuardedBy("appends")
+    private long batchSizeEvents = 0;
+    private final AtomicBoolean shouldFlush = new AtomicBoolean(false);
+    private final AtomicLong tokenCounter = new AtomicLong(0);
+    private final AtomicLong lastIssuedToken = new AtomicLong(0);
 
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
         this.connectionName = connectionName;
@@ -74,45 +88,77 @@ public class ClientConnectionImpl implements ClientConnection {
     }
 
     private void write(Append cmd) throws ConnectionFailedException {
+        //System.err.println("writeAppend");
         Channel channel = nettyHandler.getChannel();
-        EventLoop eventLoop = channel.eventLoop();
         ChannelPromise promise = channel.newPromise();
-        promise.addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture future) {
-                throttle.release(cmd.getDataLength());
-                if (!future.isSuccess()) {
-                    future.channel().pipeline().fireExceptionCaught(future.cause());
-                    future.channel().close();
-                }
+        promise.addListener((ChannelFutureListener) future -> {
+            throttle.release(cmd.getDataLength());
+            if (!future.isSuccess()) {
+                future.channel().pipeline().fireExceptionCaught(future.cause());
+                future.channel().close();
             }
         });
-        // Work around for https://github.com/netty/netty/issues/3246
-        eventLoop.execute(() -> {
-            channel.write(cmd, promise);
-        });
-        Exceptions.handleInterrupted(() -> throttle.acquire(cmd.getDataLength()));
+        writeToBatch(cmd, promise);
+        if (batchSizeBytes >= AppendBatchSizeTracker.MAX_BATCH_SIZE || batchSizeEvents >= AppendBatchSizeTracker.MAX_BATCH_EVENTS) {
+            flushBatch();
+        }
     }
-    
+
     private void write(WireCommand cmd) throws ConnectionFailedException {
+        //System.err.println("writeCommand");
         Channel channel = nettyHandler.getChannel();
-        EventLoop eventLoop = channel.eventLoop();
         ChannelPromise promise = channel.newPromise();
-        promise.addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture future) {
-                if (!future.isSuccess()) {
-                    future.channel().pipeline().fireExceptionCaught(future.cause());
-                    future.channel().close();
-                }
+        promise.addListener((ChannelFutureListener) future -> {
+            if (!future.isSuccess()) {
+                future.channel().pipeline().fireExceptionCaught(future.cause());
+                future.channel().close();
             }
         });
-        // Work around for https://github.com/netty/netty/issues/3246
-        eventLoop.execute(() -> {
-            channel.write(cmd, promise);
-        });
+        writeToBatch(cmd, promise);
+        flushBatch();
     }
-    
+
+    private void writeToBatch(Object cmd, ChannelPromise channelPromise) {
+        //System.err.println("writeToBatch");
+        synchronized (appends) {
+            // Append both the command itself and the promise in the batch of appends.
+            appends.add(new CommandAndPromise(cmd, channelPromise));
+            //System.err.println("append size: " + appends.size());
+            if (cmd instanceof Append) {
+                batchSizeBytes += ((Append) cmd).getDataLength();
+                batchSizeEvents++;
+            }
+        }
+        // Mark the batch as candidate to flush.
+        if (shouldFlush.compareAndSet(false, true) && lastIssuedToken.get() != tokenCounter.get()) {
+            channelPromise.channel().eventLoop().schedule(new BlockTimeouter(tokenCounter.get()),
+                    AppendBatchSizeTracker.MAX_BATCH_TIME_MILLIS, TimeUnit.MILLISECONDS);
+            lastIssuedToken.set(tokenCounter.get());
+        }
+    }
+
+    private void flushBatch() throws ConnectionFailedException {
+        //System.err.println("flushBatch");
+        Channel channel = nettyHandler.getChannel();
+        EventLoop eventLoop = channel.eventLoop();
+        synchronized (appends) {
+            for (CommandAndPromise append : appends) {
+                // Work around for https://github.com/netty/netty/issues/3246
+                eventLoop.execute(() -> {
+                    channel.write(append.getCommand(), append.getPromise());
+                });
+                if (append.getCommand() instanceof Append) {
+                    Exceptions.handleInterrupted(() -> throttle.acquire(((Append) append.getCommand()).getDataLength()));
+                }
+            }
+            //System.err.println("batchSizeBytes: " + batchSizeBytes + ", batchSizeEvents: " + batchSizeEvents);
+            batchSizeBytes = batchSizeEvents = 0;
+            appends.clear();
+            shouldFlush.compareAndSet(true, false);
+            tokenCounter.incrementAndGet();
+        }
+    }
+
     @Override
     public void sendAsync(WireCommand cmd, CompletedCallback callback) {
         Channel channel = null;
@@ -123,13 +169,13 @@ public class ClientConnectionImpl implements ClientConnection {
             channel = nettyHandler.getChannel();
             log.debug("Write and flush message {} on channel {}", cmd, channel);
             channel.writeAndFlush(cmd)
-                   .addListener((Future<? super Void> f) -> {
-                       if (f.isSuccess()) {
-                           callback.complete(null);
-                       } else {
-                           callback.complete(new ConnectionFailedException(f.cause()));
-                       }
-                   });
+                    .addListener((Future<? super Void> f) -> {
+                        if (f.isSuccess()) {
+                            callback.complete(null);
+                        } else {
+                            callback.complete(new ConnectionFailedException(f.cause()));
+                        }
+                    });
         } catch (ConnectionFailedException cfe) {
             log.debug("ConnectionFailedException observed when attempting to write WireCommand {} ", cmd);
             callback.complete(cfe);
@@ -177,4 +223,29 @@ public class ClientConnectionImpl implements ClientConnection {
         }
     }
 
+    @AllArgsConstructor
+    private static class CommandAndPromise {
+        @Getter
+        private final Object command;
+        @Getter
+        private final ChannelPromise promise;
+    }
+
+    @RequiredArgsConstructor
+    private final class BlockTimeouter implements Runnable {
+        private final long token;
+
+        /**
+         * Check if the current token is still valid.
+         * If its still valid, then block Timeout message is sent to netty Encoder.
+         */
+        @SneakyThrows
+        @Override
+        public void run() {
+            if (tokenCounter.get() == token) {
+                //System.err.println("timeout flush: " + token);
+                flushBatch();
+            }
+        }
+    }
 }

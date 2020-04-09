@@ -9,10 +9,11 @@
  */
 package io.pravega.test.integration.demo;
 
-import io.pravega.client.stream.EventStreamWriter;
-import io.pravega.client.stream.EventWriterConfig;
-import io.pravega.client.stream.Transaction;
-import io.pravega.client.stream.TransactionalEventStreamWriter;
+import io.pravega.client.ClientConfig;
+import io.pravega.client.EventStreamClientFactory;
+import io.pravega.client.admin.StreamManager;
+import io.pravega.client.admin.impl.StreamManagerImpl;
+import io.pravega.client.stream.*;
 import io.pravega.client.stream.impl.JavaSerializer;
 import io.pravega.client.stream.mock.MockClientFactory;
 import io.pravega.client.stream.mock.MockStreamManager;
@@ -20,45 +21,33 @@ import io.pravega.client.stream.mock.MockStreamManager;
 import lombok.Cleanup;
 
 import java.net.InetAddress;
+import java.net.URI;
 
 public class StartWriter {
 
     public static void main(String[] args) throws Exception {
         @Cleanup
-        MockStreamManager streamManager = new MockStreamManager(StartLocalService.SCOPE,
-                                                                InetAddress.getLocalHost().getHostAddress(),
-                                                                StartLocalService.SERVICE_PORT);
+        StreamManager streamManager = StreamManager.create(URI.create("tcp://localhost:9090"));
         streamManager.createScope(StartLocalService.SCOPE);
-        streamManager.createStream(StartLocalService.SCOPE, StartLocalService.STREAM_NAME, null);
-        MockClientFactory clientFactory = streamManager.getClientFactory();
+        streamManager.createStream(StartLocalService.SCOPE, StartLocalService.STREAM_NAME + "16",
+                StreamConfiguration.builder().scalingPolicy(ScalingPolicy.fixed(16)).build());
+        EventStreamClientFactory clientFactory = EventStreamClientFactory.withScope(StartLocalService.SCOPE, ClientConfig.builder().build());
         @Cleanup
-        EventStreamWriter<String> writer = clientFactory.createEventWriter(StartLocalService.STREAM_NAME, new JavaSerializer<>(),
+        EventStreamWriter<String> writer = clientFactory.createEventWriter(StartLocalService.STREAM_NAME + "16", new JavaSerializer<>(),
                                                                            EventWriterConfig.builder()
                                                                                             .transactionTimeoutTime(60000)
                                                                                             .build());
-        @Cleanup
-        TransactionalEventStreamWriter<String> txnWriter = clientFactory.createTransactionalEventWriter("writer", StartLocalService.STREAM_NAME,
-                                                                                                        new JavaSerializer<>(),
-                                                                                                        EventWriterConfig.builder()
-                                                                                                                         .transactionTimeoutTime(60000)
-                                                                                                                         .build());
-        Transaction<String> transaction = txnWriter.beginTxn();
-
-        for (int i = 0; i < 10; i++) {
-            String event = "\n Transactional write \n";
-            System.err.println("Writing event: " + event);
-            transaction.writeEvent(event);
-            transaction.flush();
-            Thread.sleep(500);
-        }
-        for (int i = 0; i < 10; i++) {
-            String event = "\n Non-transactional Publish \n";
-            System.err.println("Writing event: " + event);
+        String event = "\n Non-transactional Publish \n";
+        long iniTime = System.currentTimeMillis();
+        double events = 100000.0;
+        for (int i = 0; i < events; i++) {
+            //System.err.println("Writing event: " + i);
             writer.writeEvent(event);
-            writer.flush();
-            Thread.sleep(500);
+            //Thread.sleep(500);
         }
-        transaction.commit();
+        System.err.println("TIME: " +  ((System.currentTimeMillis() - iniTime) / 1000.0) +
+                " THROUGHPUT: " + (events / ((System.currentTimeMillis() - iniTime)) * 1000.0));
+        //transaction.commit();
         System.exit(0);
     }
 }

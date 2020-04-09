@@ -32,7 +32,6 @@ import java.util.function.Supplier;
  * {@link #MAX_BATCH_TIME_MILLIS} or half the server round trip time (whichever is less)
  */
 class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
-    private static final int MAX_BATCH_TIME_MILLIS = 100;
 
     private final Supplier<Long> clock;
     private final AtomicLong lastAppendNumber;
