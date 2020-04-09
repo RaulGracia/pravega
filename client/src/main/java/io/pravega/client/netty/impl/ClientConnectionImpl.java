@@ -56,8 +56,8 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicDouble byteCount = new AtomicDouble(0);
     private final AtomicLong lastRateCalculation = new AtomicLong(0);
     private final AtomicBoolean batchMode = new AtomicBoolean(false);
-    private final long BATCH_MODE_EVENT_THRESHOLD = 250;
-    private final long BATCH_MODE_BYTE_THRESHOLD = 5000000;
+    private final long BATCH_MODE_EVENT_THRESHOLD = 10000;
+    private final long BATCH_MODE_BYTE_THRESHOLD = 10000000;
 
     @GuardedBy("appends")
     private final List<CommandAndPromise> appends = new ArrayList<>();
@@ -141,7 +141,7 @@ public class ClientConnectionImpl implements ClientConnection {
         // Mark the batch as candidate to flush.
         if (batchMode.get() && shouldFlush.compareAndSet(false, true)) {
             channelPromise.channel().eventLoop().schedule(new BlockTimeouter(tokenCounter.get()),
-                    100, TimeUnit.MILLISECONDS);
+                    10, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -268,7 +268,7 @@ public class ClientConnectionImpl implements ClientConnection {
         @SneakyThrows
         @Override
         public void run() {
-            if (batchMode.get() && shouldFlush.get() && tokenCounter.get() == token) {
+            if (batchMode.get() && tokenCounter.get() == token) {
                 flushBatch();
             }
         }
