@@ -56,7 +56,7 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicDouble byteCount = new AtomicDouble(0);
     private final AtomicLong lastRateCalculation = new AtomicLong(0);
     private final AtomicBoolean batchMode = new AtomicBoolean(false);
-    private final long BATCH_MODE_EVENT_THRESHOLD = 20000;
+    private final long BATCH_MODE_EVENT_THRESHOLD = 10000;
     private final long BATCH_MODE_BYTE_THRESHOLD = 10000000;
 
     @GuardedBy("appends")
