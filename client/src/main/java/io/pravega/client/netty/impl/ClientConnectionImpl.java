@@ -68,13 +68,13 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicBoolean shouldFlush = new AtomicBoolean(false);
     private final AtomicLong tokenCounter = new AtomicLong(0);
     private final AtomicLong lastIssuedToken = new AtomicLong(0);
+    private final AtomicLong scheduleCounter = new AtomicLong(0);
 
     @SneakyThrows
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
         this.connectionName = connectionName;
         this.flowId = flowId;
         this.nettyHandler = nettyHandler;
-        this.nettyHandler.getChannel().eventLoop().scheduleAtFixedRate(this::updateIORate, 100, 500, TimeUnit.MILLISECONDS);
     }
 
     @Override
@@ -99,7 +99,6 @@ public class ClientConnectionImpl implements ClientConnection {
     }
 
     private void write(Append cmd) throws ConnectionFailedException {
-        //System.err.println("writeAppend");
         Channel channel = nettyHandler.getChannel();
         ChannelPromise promise = channel.newPromise();
         promise.addListener((ChannelFutureListener) future -> {
@@ -116,7 +115,6 @@ public class ClientConnectionImpl implements ClientConnection {
     }
 
     private void write(WireCommand cmd) throws ConnectionFailedException {
-        //System.err.println("writeCommand");
         Channel channel = nettyHandler.getChannel();
         ChannelPromise promise = channel.newPromise();
         promise.addListener((ChannelFutureListener) future -> {
@@ -130,29 +128,24 @@ public class ClientConnectionImpl implements ClientConnection {
     }
 
     private void writeToBatch(Object cmd, ChannelPromise channelPromise) {
-        //System.err.println("writeToBatch");
         synchronized (appends) {
             // Append both the command itself and the promise in the batch of appends.
             appends.add(new CommandAndPromise(cmd, channelPromise));
         }
-        //System.err.println("append size: " + appends.size());
         if (cmd instanceof Append) {
             batchSizeBytes.getAndAdd(((Append) cmd).getDataLength());
             byteCount.getAndAdd(((Append) cmd).getDataLength());
             batchSizeEvents.getAndAdd(1);
             eventCount.getAndAdd(1);
         }
-        //System.err.println(appendBatchSizeTracker.getAppendBlockSize());
         // Mark the batch as candidate to flush.
-        if (shouldFlush.compareAndSet(false, true) && lastIssuedToken.get() != tokenCounter.get()) {
+        if (batchMode.get() && shouldFlush.compareAndSet(false, true)) {
             channelPromise.channel().eventLoop().schedule(new BlockTimeouter(tokenCounter.get()),
-                    AppendBatchSizeTracker.MAX_BATCH_TIME_MILLIS, TimeUnit.MILLISECONDS);
-            lastIssuedToken.set(tokenCounter.get());
+                    100, TimeUnit.MILLISECONDS);
         }
     }
 
     private void flushBatch() throws ConnectionFailedException {
-        //System.err.println("flushBatch");
         Channel channel = nettyHandler.getChannel();
         EventLoop eventLoop = channel.eventLoop();
         synchronized (appends) {
@@ -165,13 +158,13 @@ public class ClientConnectionImpl implements ClientConnection {
                     Exceptions.handleInterrupted(() -> throttle.acquire(((Append) append.getCommand()).getDataLength()));
                 }
             }
-            //System.err.println("batchSizeBytes: " + batchSizeBytes + ", batchSizeEvents: " + batchSizeEvents);
-            batchSizeBytes.set(0);
-            batchSizeEvents.set(0);
             appends.clear();
-            shouldFlush.set(false);
-            tokenCounter.incrementAndGet();
         }
+        shouldFlush.set(false);
+        tokenCounter.incrementAndGet();
+        batchSizeBytes.set(0);
+        batchSizeEvents.set(0);
+        updateIORate();
     }
 
     @Override
@@ -180,7 +173,6 @@ public class ClientConnectionImpl implements ClientConnection {
         try {
             checkClientConnectionClosed();
             nettyHandler.setRecentMessage();
-
             channel = nettyHandler.getChannel();
             log.debug("Write and flush message {} on channel {}", cmd, channel);
             channel.writeAndFlush(cmd)
@@ -247,10 +239,8 @@ public class ClientConnectionImpl implements ClientConnection {
             final double currentEventRate = (eventCount.get() / (System.currentTimeMillis() - lastRateCalculation.get())) * 1000.0;
             final double currentByteRate = (byteCount.get() / (System.currentTimeMillis() - lastRateCalculation.get())) * 1000.0;
             if (currentEventRate >= BATCH_MODE_EVENT_THRESHOLD || currentByteRate >= BATCH_MODE_BYTE_THRESHOLD) {
-                //System.err.println("BATCH MODE ON");
                 batchMode.set(true);
             } else {
-                //System.err.println("BATCH MODE OFF");
                 batchMode.set(false);
             }
             eventCount.set(0);
@@ -278,8 +268,7 @@ public class ClientConnectionImpl implements ClientConnection {
         @SneakyThrows
         @Override
         public void run() {
-            if (batchMode.get() && tokenCounter.get() == token) {
-                //System.err.println("timeout flush: " + token);
+            if (batchMode.get() && shouldFlush.get() && tokenCounter.get() == token) {
                 flushBatch();
             }
         }
