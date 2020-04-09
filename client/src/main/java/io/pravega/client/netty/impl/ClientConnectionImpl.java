@@ -56,7 +56,7 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicDouble byteCount = new AtomicDouble(0);
     private final AtomicLong lastRateCalculation = new AtomicLong(0);
     private final AtomicBoolean batchMode = new AtomicBoolean(false);
-    private final long BATCH_MODE_EVENT_THRESHOLD = 10000;
+    private final long BATCH_MODE_EVENT_THRESHOLD = 20000;
     private final long BATCH_MODE_BYTE_THRESHOLD = 10000000;
 
     @GuardedBy("appends")
@@ -148,7 +148,7 @@ public class ClientConnectionImpl implements ClientConnection {
         Channel channel = nettyHandler.getChannel();
         EventLoop eventLoop = channel.eventLoop();
         synchronized (appends) {
-            for (CommandAndPromise append : appends) {
+            for (CommandAndPromise append: appends) {
                 // Work around for https://github.com/netty/netty/issues/3246
                 eventLoop.execute(() -> {
                     channel.write(append.getCommand(), append.getPromise());
@@ -267,7 +267,7 @@ public class ClientConnectionImpl implements ClientConnection {
         @SneakyThrows
         @Override
         public void run() {
-            System.err.println("tokenCounter: " + tokenCounter.get() + ", token: " + token);
+            //System.err.println("tokenCounter: " + tokenCounter.get() + ", token: " + token);
             if (tokenCounter.get() == token) {
                 flushBatch();
             }
