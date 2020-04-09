@@ -10,6 +10,7 @@
 package io.pravega.client.netty.impl;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.util.concurrent.AtomicDouble;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelPromise;
@@ -50,22 +51,28 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicBoolean closed = new AtomicBoolean(false);
     private final Semaphore throttle = new Semaphore(AppendBatchSizeTracker.MAX_BATCH_SIZE);
 
-    private final AppendBatchSizeTracker appendBatchSizeTracker;
+    // With these values we calculate whether it is worth it to switch to batch mode.
+    private final AtomicDouble eventCount = new AtomicDouble(0);
+    private final AtomicDouble byteCount = new AtomicDouble(0);
+    private final AtomicLong lastRateCalculation = new AtomicLong(0);
+    private final AtomicBoolean batchMode = new AtomicBoolean(false);
+    private final long BATCH_MODE_EVENT_THRESHOLD = 250;
+    private final long BATCH_MODE_BYTE_THRESHOLD = 5000000;
+
     @GuardedBy("appends")
     private final List<CommandAndPromise> appends = new ArrayList<>();
     @GuardedBy("appends")
-    private long batchSizeBytes = 0;
+    private AtomicLong batchSizeBytes = new AtomicLong(0);
     @GuardedBy("appends")
-    private long batchSizeEvents = 0;
+    private AtomicLong batchSizeEvents = new AtomicLong(0);
     private final AtomicBoolean shouldFlush = new AtomicBoolean(false);
     private final AtomicLong tokenCounter = new AtomicLong(0);
     private final AtomicLong lastIssuedToken = new AtomicLong(0);
 
-    public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler, AppendBatchSizeTracker batchSizeTracker) {
+    public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
         this.connectionName = connectionName;
         this.flowId = flowId;
         this.nettyHandler = nettyHandler;
-        this.appendBatchSizeTracker = batchSizeTracker;
     }
 
     @Override
@@ -101,9 +108,7 @@ public class ClientConnectionImpl implements ClientConnection {
             }
         });
         writeToBatch(cmd, promise);
-        if (appendBatchSizeTracker.getAppendBlockSize() < 1000
-            || batchSizeBytes >= AppendBatchSizeTracker.MAX_BATCH_SIZE
-            || batchSizeEvents >= AppendBatchSizeTracker.MAX_BATCH_EVENTS) {
+        if (!batchMode.get() || (batchMode.get() && isBatchSizeMet())) {
             flushBatch();
         }
     }
@@ -127,11 +132,13 @@ public class ClientConnectionImpl implements ClientConnection {
         synchronized (appends) {
             // Append both the command itself and the promise in the batch of appends.
             appends.add(new CommandAndPromise(cmd, channelPromise));
-            //System.err.println("append size: " + appends.size());
-            if (cmd instanceof Append) {
-                batchSizeBytes += ((Append) cmd).getDataLength();
-                batchSizeEvents++;
-            }
+        }
+        //System.err.println("append size: " + appends.size());
+        if (cmd instanceof Append) {
+            batchSizeBytes.getAndAdd(((Append) cmd).getDataLength());
+            byteCount.getAndAdd(((Append) cmd).getDataLength());
+            batchSizeEvents.getAndAdd(1);
+            eventCount.getAndAdd(1);
         }
         //System.err.println(appendBatchSizeTracker.getAppendBlockSize());
         // Mark the batch as candidate to flush.
@@ -157,9 +164,10 @@ public class ClientConnectionImpl implements ClientConnection {
                 }
             }
             //System.err.println("batchSizeBytes: " + batchSizeBytes + ", batchSizeEvents: " + batchSizeEvents);
-            batchSizeBytes = batchSizeEvents = 0;
+            batchSizeBytes.set(0);
+            batchSizeEvents.set(0);
             appends.clear();
-            shouldFlush.compareAndSet(true, false);
+            shouldFlush.set(false);
             tokenCounter.incrementAndGet();
         }
     }
@@ -228,6 +236,27 @@ public class ClientConnectionImpl implements ClientConnection {
         }
     }
 
+    private boolean isBatchSizeMet() {
+        return batchSizeBytes.get() >= AppendBatchSizeTracker.MAX_BATCH_SIZE || batchSizeEvents.get() >= AppendBatchSizeTracker.MAX_BATCH_EVENTS;
+    }
+
+    private void updateIORate() {
+        if (System.currentTimeMillis() - lastRateCalculation.get() >= 1000) {
+            final double currentEventRate = (eventCount.get() / (System.currentTimeMillis() - lastRateCalculation.get())) * 1000.0;
+            final double currentByteRate = (byteCount.get() / (System.currentTimeMillis() - lastRateCalculation.get())) * 1000.0;
+            if (currentEventRate >= BATCH_MODE_EVENT_THRESHOLD || currentByteRate >= BATCH_MODE_BYTE_THRESHOLD) {
+                System.err.println("BATCH MODE ON");
+                batchMode.set(true);
+            } else {
+                System.err.println("BATCH MODE OFF");
+                batchMode.set(false);
+            }
+            eventCount.set(0);
+            byteCount.set(0);
+            lastRateCalculation.set(System.currentTimeMillis());
+        }
+    }
+
     @AllArgsConstructor
     private static class CommandAndPromise {
         @Getter
@@ -247,7 +276,8 @@ public class ClientConnectionImpl implements ClientConnection {
         @SneakyThrows
         @Override
         public void run() {
-            if (tokenCounter.get() == token) {
+            updateIORate();
+            if (batchMode.get() && tokenCounter.get() == token) {
                 //System.err.println("timeout flush: " + token);
                 flushBatch();
             }

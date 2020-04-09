@@ -29,11 +29,11 @@ public class StartWriter {
         @Cleanup
         StreamManager streamManager = StreamManager.create(URI.create("tcp://localhost:9090"));
         streamManager.createScope(StartLocalService.SCOPE);
-        streamManager.createStream(StartLocalService.SCOPE, StartLocalService.STREAM_NAME,
-                StreamConfiguration.builder().scalingPolicy(ScalingPolicy.fixed(1)).build());
+        streamManager.createStream(StartLocalService.SCOPE, StartLocalService.STREAM_NAME + "16",
+                StreamConfiguration.builder().scalingPolicy(ScalingPolicy.fixed(16)).build());
         EventStreamClientFactory clientFactory = EventStreamClientFactory.withScope(StartLocalService.SCOPE, ClientConfig.builder().build());
         @Cleanup
-        EventStreamWriter<String> writer = clientFactory.createEventWriter(StartLocalService.STREAM_NAME, new JavaSerializer<>(),
+        EventStreamWriter<String> writer = clientFactory.createEventWriter(StartLocalService.STREAM_NAME + "16", new JavaSerializer<>(),
                                                                            EventWriterConfig.builder()
                                                                                             .transactionTimeoutTime(60000)
                                                                                             .build());
