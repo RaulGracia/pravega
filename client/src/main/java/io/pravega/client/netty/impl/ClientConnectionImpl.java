@@ -58,6 +58,8 @@ public class ClientConnectionImpl implements ClientConnection {
     private final AtomicBoolean batchMode = new AtomicBoolean(false);
     private final long BATCH_MODE_EVENT_THRESHOLD = 10000;
     private final long BATCH_MODE_BYTE_THRESHOLD = 10000000;
+    private final long BATCH_SIZE_BYTES = 1 * 1024 * 1024;
+    private final long BATCH_SIZE_EVENTS = 500;
 
     @GuardedBy("appends")
     private final List<CommandAndPromise> appends = new ArrayList<>();
@@ -67,7 +69,6 @@ public class ClientConnectionImpl implements ClientConnection {
     private AtomicLong batchSizeEvents = new AtomicLong(0);
     private final AtomicBoolean shouldFlush = new AtomicBoolean(false);
     private final AtomicLong tokenCounter = new AtomicLong(0);
-    private final AtomicLong lastIssuedToken = new AtomicLong(0);
 
     @SneakyThrows
     public ClientConnectionImpl(String connectionName, int flowId, FlowHandler nettyHandler) {
@@ -230,7 +231,7 @@ public class ClientConnectionImpl implements ClientConnection {
     }
 
     private boolean isBatchSizeMet() {
-        return batchSizeBytes.get() >= AppendBatchSizeTracker.MAX_BATCH_SIZE || batchSizeEvents.get() >= AppendBatchSizeTracker.MAX_BATCH_EVENTS;
+        return batchSizeBytes.get() >= BATCH_SIZE_BYTES || batchSizeEvents.get() >= BATCH_SIZE_EVENTS;
     }
 
     private void updateIORate() {
