@@ -34,7 +34,7 @@ public class ServiceConfig {
     public static final Property<Integer> PUBLISHED_PORT = Property.named("publishedPort");
     public static final Property<String> LISTENING_IP_ADDRESS = Property.named("listeningIPAddress", "");
     public static final Property<String> PUBLISHED_IP_ADDRESS = Property.named("publishedIPAddress", "");
-    public static final Property<Integer> PARALLEL_CONTAINER_STARTS = Property.named("parallelContainerStarts", 1);
+    public static final Property<Integer> PARALLEL_CONTAINER_STARTS = Property.named("parallelContainerStarts", 8);
     public static final Property<String> ZK_URL = Property.named("zkURL", "localhost:2181");
     public static final Property<Integer> ZK_RETRY_SLEEP_MS = Property.named("zkRetrySleepMs", 5000);
     public static final Property<Integer> ZK_RETRY_COUNT = Property.named("zkRetryCount", 5);
