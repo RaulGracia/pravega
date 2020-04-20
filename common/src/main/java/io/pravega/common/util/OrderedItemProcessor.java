@@ -130,7 +130,8 @@ public class OrderedItemProcessor<ItemType, ResultType> implements AutoCloseable
      * the returned future will be cancelled with a ProcessingException to prevent out-of-order executions.
      * * This method guarantees ordered execution as long as its invocations are serial. That is, it only guarantees that
      * the item has begun processing or an order assigned if the method returned successfully.
-     * * If an item failed to execute, this class will auto-close and will not be usable anymore.
+     * * If an item failed to execute, this class will auto-close and will not be usable anymore, unless the parameter
+     * closeOnException is set to false.
      *
      * @param item The item to process.
      * @return A CompletableFuture that, when completed, will indicate that the item has been processed. This will contain
@@ -139,27 +140,30 @@ public class OrderedItemProcessor<ItemType, ResultType> implements AutoCloseable
     public CompletableFuture<ResultType> process(ItemType item) {
         Preconditions.checkNotNull(item, "item");
         CompletableFuture<ResultType> result = null;
-        log.info("OrderedItemProcessor - process: {}", item);
+        log.info("OrderedItemProcessor - process1: {}", item);
         synchronized (this.stateLock) {
-            log.info("OrderedItemProcessor - process after lock: {}", item);
+            log.info("OrderedItemProcessor - process2 after lock: {}", item);
             Exceptions.checkNotClosed(this.closed, this);
             if (hasCapacity() && this.pendingItems.isEmpty()) {
+                log.info("OrderedItemProcessor - process3 has capacity and no pending items: {}", item);
                 // Not at capacity. Reserve a spot now.
                 this.activeCount++;
             } else {
+                log.info("OrderedItemProcessor - process4 else: {}", item);
                 // We are at capacity or have a backlog. Put the item in the queue and return its associated future.
                 result = new CompletableFuture<>();
                 this.pendingItems.add(new QueueItem(item, result));
             }
         }
-        log.info("OrderedItemProcessor - before result: {}", item);
+        log.info("OrderedItemProcessor - process5 before result: {}", item);
         if (result == null) {
             // We are below max capacity, so simply process the item, without queuing up.
             // It is possible, under some conditions, that we may get in here when the queue empties up (by two spots at
             // the same time). In that case, we need to acquire the processing lock to ensure that we don't accidentally
             // process this item before we finish processing the last item in the queue.
-            log.info("OrderedItemProcessor - before second lock: {}", item);
+            log.info("OrderedItemProcessor - process6 before second lock: {}", item);
             synchronized (this.processingLock) {
+                log.info("OrderedItemProcessor - process7 after second lock: {}", item);
                 result = processInternal(item);
             }
         }
@@ -175,11 +179,11 @@ public class OrderedItemProcessor<ItemType, ResultType> implements AutoCloseable
      */
     @VisibleForTesting
     protected void executionComplete(Throwable exception) {
-        log.info("OrderedItemProcessor - executionComplete: ", exception);
+        log.info("OrderedItemProcessor - executionComplete1 : ", exception);
         Collection<QueueItem> toFail = null;
         Throwable failEx = null;
         synchronized (this.stateLock) {
-            log.info("OrderedItemProcessor - executionComplete after lock: ", exception);
+            log.info("OrderedItemProcessor - executionComplete2 after lock: ", exception);
             // Release the spot occupied by this item's execution.
             this.activeCount--;
             if (exception != null) {
@@ -200,7 +204,7 @@ public class OrderedItemProcessor<ItemType, ResultType> implements AutoCloseable
                 this.emptyNotifier = null;
             }
         }
-        log.info("OrderedItemProcessor - executionComplete before toFail: ", exception);
+        log.info("OrderedItemProcessor - executionComplete3 before toFail: ", exception);
         if (toFail != null) {
             for (QueueItem q : toFail) {
                 q.result.completeExceptionally(failEx);
@@ -209,25 +213,28 @@ public class OrderedItemProcessor<ItemType, ResultType> implements AutoCloseable
             return;
         }
 
-        log.info("OrderedItemProcessor - executionComplete before processingLock: ", exception);
+        log.info("OrderedItemProcessor - executionComplete4 before processingLock: ", exception);
         // We need to ensure the items are still executed in order. Once out of the main sync block, it is possible that
         // this callback may be invoked concurrently after various completions. As such, we need a special handler for
         // these, using its own synchronization, different from the main one, so that we don't hold that stateLock for too long.
         synchronized (this.processingLock) {
             while (true) {
                 QueueItem toProcess;
-                log.info("OrderedItemProcessor - executionComplete before stateLock: ", exception);
+                log.info("OrderedItemProcessor - executionComplete5 before stateLock: ", exception);
                 synchronized (this.stateLock) {
+                    log.info("OrderedItemProcessor - executionComplete6 after stateLock: ", exception);
                     if (hasCapacity() && !this.pendingItems.isEmpty()) {
                         // We have spare capacity and we have something to process. Dequeue it and reserve the spot.
                         toProcess = this.pendingItems.pollFirst();
                         this.activeCount++;
+                        log.info("OrderedItemProcessor - executionComplete7 found new element to process: {}", toProcess);
                     } else {
+                        log.info("OrderedItemProcessor - executionComplete8 break ", exception);
                         // No capacity left or no more pending items.
                         break;
                     }
                 }
-                log.info("OrderedItemProcessor - executionComplete after stateLock: ", exception);
+                log.info("OrderedItemProcessor - executionComplete9 after stateLock: {}", toProcess.data);
                 Futures.completeAfter(() -> processInternal(toProcess.data), toProcess.result);
             }
         }
@@ -236,14 +243,15 @@ public class OrderedItemProcessor<ItemType, ResultType> implements AutoCloseable
     @GuardedBy("processingLock")
     private CompletableFuture<ResultType> processInternal(ItemType data) {
         try {
-            log.info("OrderedItemProcessor - processInternal: {}", data);
+            log.info("OrderedItemProcessor - processInternal1 pending items size: {}", this.pendingItems.size());
+            log.info("OrderedItemProcessor - processInternal2: {}", data);
             val result = this.processor.apply(data);
-            log.info("OrderedItemProcessor - processInternal after apply: {}", data);
+            log.info("OrderedItemProcessor - processInternal3 after apply: {}", data);
             result.whenCompleteAsync((r, ex) -> executionComplete(ex), this.executor);
-            log.info("OrderedItemProcessor - processInternal after whenCompleteAsync: {}", data);
+            log.info("OrderedItemProcessor - processInternal4 after whenCompleteAsync: {}", data);
             return result;
         } catch (Throwable ex) {
-            log.info("OrderedItemProcessor - processInternal catch: ", ex);
+            log.info("OrderedItemProcessor - processInternal5 catch: ", ex);
             if (!Exceptions.mustRethrow(ex)) {
                 executionComplete(ex);
             }
