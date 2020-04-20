@@ -255,6 +255,7 @@ public class ZKSegmentContainerMonitor implements AutoCloseable {
             return this.registry
                     .startContainer(containerId, INIT_TIMEOUT_PER_CONTAINER)
                     .whenComplete((handle, ex) -> {
+                        log.info("startContainer - whenComplete {}.", containerId);
                         try {
                             if (ex == null) {
                                 if (this.handles.putIfAbsent(handle.getContainerId(), handle) != null) {
@@ -276,6 +277,7 @@ public class ZKSegmentContainerMonitor implements AutoCloseable {
                     });
         } catch (Throwable e) {
             // The pending task has to be removed on all failures to enable retries.
+            log.info("startContainer - catch {}.", containerId, e);
             this.pendingTasks.remove(containerId);
             throw e;
         }
