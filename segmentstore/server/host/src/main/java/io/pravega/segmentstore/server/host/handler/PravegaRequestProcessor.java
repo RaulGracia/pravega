@@ -127,7 +127,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
 
     static final Duration TIMEOUT = Duration.ofMinutes(1);
     private static final TagLogger log = new TagLogger(LoggerFactory.getLogger(PravegaRequestProcessor.class));
-    private static final int MAX_READ_SIZE = 2 * 1024 * 1024;
+    private static final int MAX_READ_SIZE = 10 * 1024 * 1024;
     private static final String EMPTY_STACK_TRACE = "";
     private final StreamSegmentStore segmentStore;
     private final TableStore tableStore;

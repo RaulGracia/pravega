@@ -26,7 +26,7 @@ public class ReaderConfig implements Serializable {
     public static class ReaderConfigBuilder {
         private long initialAllocationDelay = 0;
         private boolean disableTimeWindows = false;
-        private int bufferSize = 1024 * 1024;
+        private int bufferSize = 10 * 1024 * 1024;
     }
     
 }
