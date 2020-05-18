@@ -114,7 +114,7 @@ class StorageWriter extends AbstractThreadPoolService implements Writer {
         // 3. Load data into SegmentProcessors.
         // 4. Flush eligible SegmentProcessors.
         // 5. Acknowledge (truncate).
-        /*return Futures.loop(
+        return Futures.loop(
                 this::canRun,
                 () -> Futures
                         .delayedFuture(getIterationStartDelay(), this.executor)
@@ -126,9 +126,7 @@ class StorageWriter extends AbstractThreadPoolService implements Writer {
                         .exceptionally(this::iterationErrorHandler)
                         .thenRunAsync(this::endIteration, this.executor),
                 this.executor)
-                      .thenRun(this::closeProcessors);*/
-        return CompletableFuture.runAsync(() -> Exceptions.handleInterrupted(() -> Thread.sleep(Long.MAX_VALUE)));
-
+                      .thenRun(this::closeProcessors);
     }
 
     private boolean canRun() {
