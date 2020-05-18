@@ -429,16 +429,19 @@ public class DurableLog extends AbstractService implements OperationLog {
     private void triggerTailReads() {
         this.executor.execute(() -> {
             // Gather all the eligible tail reads.
-            List<TailRead> toTrigger = Collections.emptyList();
+            List<TailRead> toTrigger;
             synchronized (this.tailReads) {
                 Operation lastOp = this.inMemoryOperationLog.getLast();
                 if (lastOp != null) {
+                    toTrigger = new ArrayList<>();
                     long seqNo = lastOp.getSequenceNumber();
                     for (TailRead t : this.tailReads) {
                         if (t.afterSequenceNumber < seqNo) {
-                            tailReads.add(t);
+                            toTrigger.add(t);
                         }
                     }
+                } else {
+                    toTrigger = Collections.emptyList();
                 }
             }
 
