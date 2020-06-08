@@ -252,7 +252,7 @@ public class PositionImpl extends PositionInternal {
         int index = 0;
         for (Entry<Segment, Long> entry : this.ownedSegments.entrySet()) {
             newOwnedSegments.put(entry.getKey(), (index < updatesToSegmentOffsets.length && updatesToSegmentOffsets[index] != 0L) ?
-                    updatesToSegmentOffsets[index] : ownedSegments.get(entry.getKey()));
+                    updatesToSegmentOffsets[index] : entry.getValue());
             index++;
         }
         // Build the final state of this PositionImpl object.
