@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 
 import java.nio.ByteBuffer;
+import java.util.AbstractMap;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -152,7 +153,8 @@ public class EventStreamReaderTest {
         Mockito.when(inputStreamFactory.createEventReaderForSegment(any(Segment.class), anyInt(), any(Semaphore.class), anyLong())).thenReturn(segmentInputStream1);
         //Mock Orderer
         Orderer orderer = Mockito.mock(Orderer.class);
-        Mockito.when(orderer.nextSegment(any(List.class))).thenReturn(segmentInputStream1).thenReturn(segmentInputStream2);
+        Mockito.when(orderer.nextSegment(any(List.class))).thenReturn(new AbstractMap.SimpleEntry(segmentInputStream1, 0))
+                                                          .thenReturn(new AbstractMap.SimpleEntry(segmentInputStream2, 0));
 
         @Cleanup
         EventStreamReaderImpl<byte[]> reader = new EventStreamReaderImpl<>(inputStreamFactory, segmentStreamFactory,
@@ -208,7 +210,8 @@ public class EventStreamReaderTest {
         Mockito.when(inputStreamFactory.createEventReaderForSegment(any(Segment.class), anyInt(), any(Semaphore.class), anyLong())).thenReturn(segmentInputStream1);
         //Mock Orderer
         Orderer orderer = Mockito.mock(Orderer.class);
-        Mockito.when(orderer.nextSegment(any(List.class))).thenReturn(segmentInputStream1).thenReturn(segmentInputStream2);
+        Mockito.when(orderer.nextSegment(any(List.class))).thenReturn(new AbstractMap.SimpleEntry(segmentInputStream1, 0))
+                                                          .thenReturn(new AbstractMap.SimpleEntry(segmentInputStream2, 1));
 
         @Cleanup
         EventStreamReaderImpl<byte[]> reader = new EventStreamReaderImpl<>(inputStreamFactory, segmentStreamFactory,

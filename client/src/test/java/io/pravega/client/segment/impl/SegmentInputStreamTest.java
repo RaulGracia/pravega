@@ -484,24 +484,24 @@ public class SegmentInputStreamTest extends LeakDetectorTestSuite {
         
         Orderer o = new Orderer();
         List<EventSegmentReaderImpl> segments = ImmutableList.of(stream1, stream2, stream3, stream4, stream5);
-        assertEquals(stream2, o.nextSegment(segments));
-        assertEquals(stream3, o.nextSegment(segments));
-        assertEquals(stream4, o.nextSegment(segments));
-        assertEquals(stream5, o.nextSegment(segments));
+        assertEquals(stream2, o.nextSegment(segments).getKey());
+        assertEquals(stream3, o.nextSegment(segments).getKey());
+        assertEquals(stream4, o.nextSegment(segments).getKey());
+        assertEquals(stream5, o.nextSegment(segments).getKey());
         assertNotNull(stream2.read());
-        assertEquals(stream3, o.nextSegment(segments));
-        assertEquals(stream4, o.nextSegment(segments));
-        assertEquals(stream5, o.nextSegment(segments));
+        assertEquals(stream3, o.nextSegment(segments).getKey());
+        assertEquals(stream4, o.nextSegment(segments).getKey());
+        assertEquals(stream5, o.nextSegment(segments).getKey());
         assertNotNull(stream3.read());
-        assertEquals(stream3, o.nextSegment(segments));
-        assertEquals(stream4, o.nextSegment(segments));
-        assertEquals(stream5, o.nextSegment(segments));
+        assertEquals(stream3, o.nextSegment(segments).getKey());
+        assertEquals(stream4, o.nextSegment(segments).getKey());
+        assertEquals(stream5, o.nextSegment(segments).getKey());
         AssertExtensions.assertThrows(EndOfSegmentException.class, () -> stream3.read());
         AssertExtensions.assertThrows(EndOfSegmentException.class, () -> stream4.read());
         AssertExtensions.assertThrows(SegmentTruncatedException.class, () -> stream5.read());
-        assertEquals(stream3, o.nextSegment(segments));
-        assertEquals(stream4, o.nextSegment(segments));
-        assertEquals(stream5, o.nextSegment(segments));
+        assertEquals(stream3, o.nextSegment(segments).getKey());
+        assertEquals(stream4, o.nextSegment(segments).getKey());
+        assertEquals(stream5, o.nextSegment(segments).getKey());
     }
 
     @Test

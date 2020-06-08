@@ -66,14 +66,14 @@ public class OrdererTest {
         Orderer o = new Orderer();
         int[] totals = new int[streams.size()];
         for (int i = 0; i < streams.size() * 10; i++) {
-            StubEventSegmentReader chosen = o.nextSegment(streams);
+            StubEventSegmentReader chosen = o.nextSegment(streams).getKey();
             totals[chosen.getNumber()]++;
         }
         for (int i = 0; i < 10; i++) {
             o.nextSegment(createInputStreams(1));
         }
         for (int i = 0; i < streams.size() * 10; i++) {
-            StubEventSegmentReader chosen = o.nextSegment(streams);
+            StubEventSegmentReader chosen = o.nextSegment(streams).getKey();
             totals[chosen.getNumber()]++;
         }
         for (int value : totals) {
@@ -87,7 +87,7 @@ public class OrdererTest {
         Orderer o = new Orderer();
         int[] totals = new int[streams.size()];
         for (int i = 0; i < streams.size() * 100; i++) {
-            StubEventSegmentReader chosen = o.nextSegment(streams);
+            StubEventSegmentReader chosen = o.nextSegment(streams).getKey();
             totals[chosen.getNumber()]++;
         }
         for (int value : totals) {
@@ -104,7 +104,7 @@ public class OrdererTest {
             }
         }
         Orderer o = new Orderer();
-        StubEventSegmentReader chosen = o.nextSegment(streams);
+        StubEventSegmentReader chosen = o.nextSegment(streams).getKey();
         assertEquals(7, chosen.getNumber());
     }
 
@@ -114,7 +114,7 @@ public class OrdererTest {
         Orderer o = new Orderer(Integer.MAX_VALUE - 5);
         int[] totals = new int[streams.size()];
         for (int i = 0; i < streams.size() * 2; i++) {
-            StubEventSegmentReader chosen = o.nextSegment(streams);
+            StubEventSegmentReader chosen = o.nextSegment(streams).getKey();
             assertNotNull(chosen);
             totals[chosen.getNumber()]++;
         }

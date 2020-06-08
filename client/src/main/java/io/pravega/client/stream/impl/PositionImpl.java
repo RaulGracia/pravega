@@ -22,7 +22,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -40,7 +39,7 @@ public class PositionImpl extends PositionInternal {
     private final Map<Segment, Range> segmentRanges;
 
     // If this field is set, it means that we will need to apply the updates on the ownedSegments.
-    private transient List<Entry<Segment, Long>> updatesToSegmentOffsets;
+    private transient long[] updatesToSegmentOffsets;
     // This field represents the index up to which updatesToSegmentOffsets should be applied to ownedSegments.
     private transient long version;
 
@@ -76,10 +75,9 @@ public class PositionImpl extends PositionInternal {
      *                                   build the internal state of the object.
      */
     @Builder(builderClassName = "PositionBuilder")
-    PositionImpl(Map<Segment, Long> ownedSegments, Map<Segment, Range> segmentRanges, List<Entry<Segment, Long>> updatesToSegmentOffsets) {
+    PositionImpl(Map<Segment, Long> ownedSegments, Map<Segment, Range> segmentRanges, long[] updatesToSegmentOffsets) {
         this.ownedSegments = Collections.unmodifiableMap(ownedSegments);
-        this.updatesToSegmentOffsets = (updatesToSegmentOffsets != null) ? Collections.unmodifiableList(updatesToSegmentOffsets) : null;
-        this.version = (updatesToSegmentOffsets != null) ? updatesToSegmentOffsets.size() : 0;
+        this.updatesToSegmentOffsets = updatesToSegmentOffsets;
         if (segmentRanges == null) {
             this.segmentRanges = Collections.emptyMap();
         } else {
@@ -245,24 +243,17 @@ public class PositionImpl extends PositionInternal {
 
     private synchronized void applySegmentOffsetUpdatesIfNeeded() {
         // No updates, so nothing to do.
-        if (this.updatesToSegmentOffsets == null || this.updatesToSegmentOffsets.isEmpty()) {
+        if (this.updatesToSegmentOffsets == null) {
             return;
         }
         // We create the new ownedSegments map based on the updatesToSegmentOffsets list and existing ownedSegments map.
         Map<Segment, Long> newOwnedSegments = new HashMap<>();
         // Apply only the most recent Segment offset updates starting at the point this event was read.
-        for (int i = (int) this.version - 1; i >= 0; i--) {
-            newOwnedSegments.putIfAbsent(this.updatesToSegmentOffsets.get(i).getKey(), this.updatesToSegmentOffsets.get(i).getValue());
-            // We have the most recent updates on all the segments, no need to continue the loop.
-            if (newOwnedSegments.size() == this.ownedSegments.size()) {
-                break;
-            }
-        }
-        // In case that there are segments without updates in updatesToSegmentOffsets, we apply the existing values in ownedSegments.
-        if (newOwnedSegments.size() < this.ownedSegments.size()) {
-            for (Entry<Segment, Long> s : this.ownedSegments.entrySet()) {
-                newOwnedSegments.putIfAbsent(s.getKey(), s.getValue());
-            }
+        int index = 0;
+        for (Entry<Segment, Long> entry : this.ownedSegments.entrySet()) {
+            newOwnedSegments.put(entry.getKey(), (index < updatesToSegmentOffsets.length && updatesToSegmentOffsets[index] != 0L) ?
+                    updatesToSegmentOffsets[index] : ownedSegments.get(entry.getKey()));
+            index++;
         }
         // Build the final state of this PositionImpl object.
         this.ownedSegments = Collections.unmodifiableMap(newOwnedSegments);

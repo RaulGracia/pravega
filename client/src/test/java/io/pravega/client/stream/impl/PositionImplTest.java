@@ -14,11 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.util.AbstractMap;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Set of tests to verify that a Position object built with a set of Segment offsets and ranges behaves exactly the same
@@ -34,28 +30,28 @@ public class PositionImplTest {
     private Map<Segment, Long> ownedSegmentsEventual = getEventualSegmentOffsets(getSegments());
     private Map<Segment, SegmentWithRange.Range> segmentRanges = getSegmentRanges(getSegments());
     // Updates related to every read performed on a Segment.
-    private List<Map.Entry<Segment, Long>> offsetUpdates = getSegmentOffsetUpdates(getSegments());
+    private long[] offsetUpdates = getSegmentOffsetUpdates(getSegments());
 
     @Test
     public void testPositionApplyUpdates() {
-        List<Map.Entry<Segment, Long>> offsetUpdates = new ArrayList<>();
+        long[] offsetUpdates = new long[ownedBaseSegmentsOffsets.size()];
         // First position, with base segment offsets and no segment offset updates.
         PositionImpl p1 = PositionImpl.builder().segmentRanges(segmentRanges)
                                                 .ownedSegments(ownedBaseSegmentsOffsets)
-                                                .updatesToSegmentOffsets(offsetUpdates).build();
+                                                .updatesToSegmentOffsets(Arrays.copyOf(offsetUpdates, offsetUpdates.length)).build();
         // Update segment offsets to simulate a read.
-        offsetUpdates.add(new AbstractMap.SimpleEntry<>(getSegments().get(0), 1L));
+        offsetUpdates[0] = 1L;
         // New Position object after the change in offsets. Note that we have not invoked any method to Position object,
         // so the segment updates are not applied (if any).
         PositionImpl p2 = PositionImpl.builder().segmentRanges(segmentRanges)
                                                 .ownedSegments(ownedBaseSegmentsOffsets)
-                                                .updatesToSegmentOffsets(offsetUpdates).build();
+                                                .updatesToSegmentOffsets(Arrays.copyOf(offsetUpdates, offsetUpdates.length)).build();
         // More reads.
-        offsetUpdates.add(new AbstractMap.SimpleEntry<>(getSegments().get(1), 1L));
-        offsetUpdates.add(new AbstractMap.SimpleEntry<>(getSegments().get(1), 2L));
+        offsetUpdates[1] = 1L;
+        offsetUpdates[1] = 2L;
         PositionImpl p3 = PositionImpl.builder().segmentRanges(segmentRanges)
                                                 .ownedSegments(ownedBaseSegmentsOffsets)
-                                                .updatesToSegmentOffsets(offsetUpdates).build();
+                                                .updatesToSegmentOffsets(Arrays.copyOf(offsetUpdates, offsetUpdates.length)).build();
         // Verify that each Position object lazily applies the updates on segment offsets and has the right state at the
         // time the event was read.
         Assert.assertEquals(p1.getOwnedSegmentsWithOffsets(), ownedBaseSegmentsOffsets);
@@ -148,6 +144,7 @@ public class PositionImplTest {
         PositionImpl positionNormal = new PositionImpl(ownedSegmentsEventual, segmentRanges, null);
         // And ii) the other in a lazy fashion, meaning the base segment offsets + the list of updates to their offsets.
         PositionImpl positionLazy = new PositionImpl(ownedBaseSegmentsOffsets, segmentRanges, offsetUpdates);
+        System.err.println(Arrays.toString(offsetUpdates));
         Assert.assertEquals(positionNormal.getOffsetForOwnedSegment(getSegments().get(0)), positionLazy.getOffsetForOwnedSegment(getSegments().get(0)));
     }
 
@@ -161,7 +158,7 @@ public class PositionImplTest {
     }
 
     private Map<Segment, Long> getBaseSegmentOffsets(List<Segment> segments) {
-        Map<Segment, Long> ownedSegmentsBase = new HashMap<>();
+        Map<Segment, Long> ownedSegmentsBase = new LinkedHashMap<>();
         for (Segment s : segments) {
             ownedSegmentsBase.put(s, 0L);
         }
@@ -169,7 +166,7 @@ public class PositionImplTest {
     }
 
     private Map<Segment, Long> getEventualSegmentOffsets(List<Segment> segments) {
-        Map<Segment, Long> ownedSegmentsBase = new HashMap<>();
+        Map<Segment, Long> ownedSegmentsBase = new LinkedHashMap<>();
         long i = 1L;
         for (Segment s : segments) {
             ownedSegmentsBase.put(s, i);
@@ -189,14 +186,10 @@ public class PositionImplTest {
         return segmentRanges;
     }
 
-    private List<Map.Entry<Segment, Long>> getSegmentOffsetUpdates(List<Segment> segments) {
-        List<Map.Entry<Segment, Long>> offsetUpdates = new ArrayList<>();
-        int index = 1;
-        for (Segment s : segments) {
-            for (long i = 1; i <= index; i++) {
-                offsetUpdates.add(new AbstractMap.SimpleEntry<>(s, i));
-            }
-            index++;
+    private long[] getSegmentOffsetUpdates(List<Segment> segments) {
+        long[] offsetUpdates = new long[segments.size()];
+        for (int index = 0; index < offsetUpdates.length; index++) {
+            offsetUpdates[index] = index + 1;
         }
         return offsetUpdates;
     }

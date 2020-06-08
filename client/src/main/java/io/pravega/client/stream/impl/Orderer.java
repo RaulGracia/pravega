@@ -13,7 +13,10 @@ import com.google.common.annotations.VisibleForTesting;
 import io.pravega.client.segment.impl.EndOfSegmentException;
 import io.pravega.client.segment.impl.EventSegmentReader;
 import io.pravega.common.MathHelpers;
+
+import java.util.AbstractMap.SimpleEntry;
 import java.util.List;
+import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,15 +50,16 @@ public class Orderer {
      * @return A segment that this reader should read from next.
      */
     @VisibleForTesting
-    public <T extends EventSegmentReader> T nextSegment(List<T> segments) {
+    public <T extends EventSegmentReader> Entry<T, Integer> nextSegment(List<T> segments) {
         if (segments.isEmpty()) {
             return null;
         }
         for (int i = 0; i < segments.size(); i++) {
-            T inputStream = segments.get(MathHelpers.abs(counter.incrementAndGet()) % segments.size());
+            int index = MathHelpers.abs(counter.incrementAndGet()) % segments.size();
+            T inputStream = segments.get(index);
             if (inputStream.isSegmentReady()) {
                 log.trace("Selecting segment: {}", inputStream.getSegmentId());
-                return inputStream;
+                return new SimpleEntry<>(inputStream, index);
             } else {
                 inputStream.fillBuffer();
             }

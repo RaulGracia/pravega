@@ -41,11 +41,11 @@ import io.pravega.common.Timer;
 import io.pravega.common.util.CopyOnWriteHashMap;
 import io.pravega.shared.protocol.netty.WireCommands;
 import java.nio.ByteBuffer;
-import java.util.AbstractMap.SimpleEntry;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -63,10 +63,6 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
 
     // Base waiting time for a reader on an idle segment waiting for new data to be read.
     private static final long BASE_READER_WAITING_TIME_MS = ReaderGroupStateManager.TIME_UNIT.toMillis();
-    // As an optimization to avoid creating a new ownedSegments map per event read, we define a base map of segments and
-    // then a batch of updates to the offsets of these segments, one per event read. Internally, the Position object can
-    // derive the right offsets at which the event was read by lazily replying such updates up to the point it was read.
-    private static final int MAX_BUFFERED_SEGMENT_OFFSET_UPDATES = 1000;
 
     private final Serializer<Type> deserializer;
     private final SegmentInputStreamFactory inputStreamFactory;
@@ -87,10 +83,9 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
     // Ranges, ownedSegments and segmentOffsetUpdates may be lazily accessed by PositionImpl objects to build their
     // state. The objective is to avoid creating per-event collections for performance reasons.
     private CopyOnWriteHashMap<Segment, Range> ranges = new CopyOnWriteHashMap<>();
-    private Map<Segment, Long> ownedSegments = new HashMap<>();
-    private List<Entry<Segment, Long>> segmentOffsetUpdates = newImmutableSegmentOffsetUpdatesList();
-    @GuardedBy("readers")
-    private int segmentOffsetUpdatesIndex = 0;
+    private Map<Segment, Long> ownedSegments = new LinkedHashMap<>();
+    private long[] segmentOffsetUpdates = new long[0];
+
     @GuardedBy("readers")
     private String atCheckpoint;
     private final ReaderGroupStateManager groupState;
@@ -134,17 +129,20 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
         Segment segment = null;
         long offset = -1;
         ByteBuffer buffer = null;
+        int segmentIndex = -1;
         do {
             String checkpoint = updateGroupStateIfNeeded();
             if (checkpoint != null) {
                 return createEmptyEvent(checkpoint);
             }
-            EventSegmentReader segmentReader = orderer.nextSegment(readers);
-            if (segmentReader == null) {
+            Entry<EventSegmentReader, Integer> ordererResult = orderer.nextSegment(readers);
+            if (ordererResult == null) {
                 blockFor(firstByteTimeoutMillis);
                 segmentsWithData.drainPermits();
                 buffer = null;
             } else {
+                EventSegmentReader segmentReader = ordererResult.getKey();
+                segmentIndex = ordererResult.getValue();
                 segment = segmentReader.getSegmentId();
                 offset = segmentReader.getOffset();
                 try {
@@ -170,16 +168,13 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
         } 
         lastRead = Sequence.create(segment.getSegmentId(), offset);
         int length = buffer.remaining() + WireCommands.TYPE_PLUS_LENGTH_SIZE;
-        addSegmentOffsetUpdateIfNeeded(segment, offset + length);
+        updateSegmentOffsetIfNeeded(segmentIndex, offset + length);
         return new EventReadImpl<>(deserializer.deserialize(buffer), getCurrentPosition(), new EventPointerImpl(segment, offset, length), null);
     }
 
-    private void addSegmentOffsetUpdateIfNeeded(Segment segment, long offset) {
-        if (segmentOffsetUpdatesIndex >= MAX_BUFFERED_SEGMENT_OFFSET_UPDATES) {
-            refreshAndGetPosition();
-        } else {
-            segmentOffsetUpdates.set(segmentOffsetUpdatesIndex, new SimpleEntry<>(segment, offset));
-            segmentOffsetUpdatesIndex++;
+    private void updateSegmentOffsetIfNeeded(int segmentIndex, long offset) {
+        if (segmentIndex >= 0 && segmentIndex < segmentOffsetUpdates.length) {
+            segmentOffsetUpdates[segmentIndex] = offset;
         }
     }
 
@@ -203,12 +198,12 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
     private PositionInternal refreshAndGetPosition() {
         // We need to create new objects for segmentOffsetUpdates and ownedSegments, as there could be Position objects
         // pointing to the current state of existing segmentOffsetUpdates and ownedSegments to build their internal state.
-        segmentOffsetUpdates = newImmutableSegmentOffsetUpdatesList();
-        segmentOffsetUpdatesIndex = 0;
-        ownedSegments = new HashMap<>(sealedSegments);
+        segmentOffsetUpdates = new long[readers.size()];
+        ownedSegments = new LinkedHashMap<>();
         for (EventSegmentReader entry : readers) {
             ownedSegments.put(entry.getSegmentId(), entry.getOffset());
         }
+        ownedSegments.putAll(sealedSegments);
         return getCurrentPosition();
     }
 
@@ -221,20 +216,8 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
     private PositionInternal getCurrentPosition() {
         return PositionImpl.builder().ownedSegments(ownedSegments)
                                      .segmentRanges(ranges.getInnerMap())
-                                     .updatesToSegmentOffsets(segmentOffsetUpdates.subList(0, segmentOffsetUpdatesIndex))
+                                     .updatesToSegmentOffsets(Arrays.copyOf(segmentOffsetUpdates, segmentOffsetUpdates.length))
                                      .build();
-    }
-
-    /**
-     * As a segmentOffsetUpdates object may be read by multiple PositionImpl objects, we need to ensure that that list
-     * is structurally immutable (i.e., cannot be resized), but it should allow setting and reading values for list
-     * positions. Any attempt to add/remove elements from the list results in {@link java.lang.UnsupportedOperationException}.
-     *
-     * @return New immutable array of Entry<Segment, Long> wrapped by a List interface.
-     */
-    @SuppressWarnings("unchecked")
-    private List<Entry<Segment, Long>> newImmutableSegmentOffsetUpdatesList() {
-        return Arrays.asList((Entry<Segment, Long>[]) new Entry[MAX_BUFFERED_SEGMENT_OFFSET_UPDATES]);
     }
 
     /**
@@ -410,9 +393,8 @@ public class EventStreamReaderImpl<Type> implements EventStreamReader<Type> {
                 }
                 readers.clear();
                 ranges = new CopyOnWriteHashMap<>();
-                ownedSegments = new HashMap<>();
-                segmentOffsetUpdates = newImmutableSegmentOffsetUpdatesList();
-                segmentOffsetUpdatesIndex = 0;
+                ownedSegments = new LinkedHashMap<>();
+                segmentOffsetUpdates = new long[0];
                 groupState.close();
             }
         }
