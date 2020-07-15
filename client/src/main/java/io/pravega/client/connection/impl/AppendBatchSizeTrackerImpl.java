@@ -67,7 +67,7 @@ public class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
         lastAckNumber = new AtomicLong(0);
         lastAppendNumber = new AtomicLong(0);
         try {
-            batchingLog = new BufferedWriter(new FileWriter("appendbatchtracker.log"));
+            batchingLog = new BufferedWriter(new FileWriter("appendbatchtracker" + System.currentTimeMillis() + ".log"));
         } catch (IOException e) {
             e.printStackTrace();
         }
