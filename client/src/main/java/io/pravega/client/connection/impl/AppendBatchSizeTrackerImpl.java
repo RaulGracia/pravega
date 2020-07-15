@@ -15,6 +15,10 @@ import io.pravega.common.ExponentialMovingAverage;
 import io.pravega.common.MathHelpers;
 import io.pravega.common.util.EnvVars;
 import io.pravega.shared.protocol.netty.AppendBatchSizeTracker;
+
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
 
@@ -53,11 +57,20 @@ public class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
     private final ExponentialMovingAverage nanosBetweenAppends = new ExponentialMovingAverage(10 * NANOS_PER_MILLI, 0.001, true);
     private final ExponentialMovingAverage appendsOutstanding = new ExponentialMovingAverage(20, 0.001, false);
 
+    // Debug batching algorithm
+    private BufferedWriter batchingLog = null;
+    private AtomicLong batchingLogSampling = new AtomicLong(0);
+
     public AppendBatchSizeTrackerImpl() {
         clock = System::nanoTime;
         lastAppendTime = new AtomicLong(clock.get());
         lastAckNumber = new AtomicLong(0);
         lastAppendNumber = new AtomicLong(0);
+        try {
+            batchingLog = new BufferedWriter(new FileWriter("appendbatchtracker.log"));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -87,12 +100,35 @@ public class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
         if (numInflight <= 1) {
             return 0;
         }
+        if (batchingLogSampling.get() == 0) {
+            try {
+                batchingLog.write("timestamp \t nanosPerAppend \t appendsInMaxBatchTime \t appendsInTime \t appendsInBatch \t batchSize \r\n");
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
         double nanosPerAppend = nanosBetweenAppends.getCurrentValue();
         double appendsInMaxBatchTime = Math.max(1.0, (MAX_BATCH_TIME_MILLIS * NANOS_PER_MILLI) / nanosPerAppend);
         double appendsInTime = Math.max(1.0, BASE_TIME_NANOS / nanosPerAppend);
         double appendsInBatch = MathHelpers.minMax(appendsOutstanding.getCurrentValue() * OUTSTANDING_FRACTION, appendsInTime, appendsInMaxBatchTime);
         int size = (int) (appendsInBatch * eventSize.getCurrentValue()) + BASE_SIZE;
-        return MathHelpers.minMax(size, 0, MAX_BATCH_SIZE);
+        int batchSize = MathHelpers.minMax(size, 0, MAX_BATCH_SIZE);
+        if (batchingLogSampling.get() % 50 == 0) {
+            StringBuilder stringBuilder = new StringBuilder();
+            stringBuilder.append(System.currentTimeMillis()).append("\t")
+                         .append(nanosPerAppend).append("\t")
+                         .append(appendsInMaxBatchTime).append("\t")
+                         .append(appendsInTime).append("\t")
+                         .append(appendsInBatch).append("\t")
+                         .append(batchSize).append("\r\n");
+            try {
+                batchingLog.write(stringBuilder.toString());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        batchingLogSampling.addAndGet(1);
+        return batchSize;
     }
 
     @Override
