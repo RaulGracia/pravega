@@ -49,9 +49,9 @@ public class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
     private final AtomicLong lastAppendNumber;
     private final AtomicLong lastAppendTime;
     private final AtomicLong lastAckNumber;
-    private final ExponentialMovingAverage eventSize = new ExponentialMovingAverage(1024, 0.01, true);
-    private final ExponentialMovingAverage nanosBetweenAppends = new ExponentialMovingAverage(10 * NANOS_PER_MILLI, 0.001, true);
-    private final ExponentialMovingAverage appendsOutstanding = new ExponentialMovingAverage(20, 0.001, false);
+    private final ExponentialMovingAverage eventSize = new ExponentialMovingAverage(1024, 0.1, true);
+    private final ExponentialMovingAverage nanosBetweenAppends = new ExponentialMovingAverage(10 * NANOS_PER_MILLI, 0.1, false);
+    private final ExponentialMovingAverage appendsOutstanding = new ExponentialMovingAverage(2, 0.05, false);
 
     public AppendBatchSizeTrackerImpl() {
         clock = System::nanoTime;
@@ -89,7 +89,8 @@ public class AppendBatchSizeTrackerImpl implements AppendBatchSizeTracker {
         }
         double nanosPerAppend = nanosBetweenAppends.getCurrentValue();
         double appendsInMaxBatchTime = Math.max(1.0, (MAX_BATCH_TIME_MILLIS * NANOS_PER_MILLI) / nanosPerAppend);
-        double appendsInBatch = MathHelpers.minMax(appendsOutstanding.getCurrentValue() * OUTSTANDING_FRACTION, 1.0, appendsInMaxBatchTime);
+        double appendsInTime = Math.max(1.0, BASE_TIME_NANOS / nanosPerAppend);
+        double appendsInBatch = MathHelpers.minMax(appendsOutstanding.getCurrentValue() * OUTSTANDING_FRACTION, appendsInTime, appendsInMaxBatchTime);
         int size = (int) (appendsInBatch * eventSize.getCurrentValue()) + BASE_SIZE;
         return MathHelpers.minMax(size, 0, MAX_BATCH_SIZE);
     }
