@@ -262,7 +262,6 @@ public class TcpClientConnection implements ClientConnection {
             result.setSendBufferSize(TCP_BUFFER_SIZE);
             result.setReceiveBufferSize(TCP_BUFFER_SIZE);
             result.setTcpNoDelay(true);
-            result.setSoTimeout(CONNECTION_TIMEOUT);
             result.connect(new InetSocketAddress(location.getEndpoint(), location.getPort()), CONNECTION_TIMEOUT);
             return result;
         } catch (Exception e) {
