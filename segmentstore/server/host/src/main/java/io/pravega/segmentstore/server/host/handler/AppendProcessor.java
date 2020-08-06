@@ -98,6 +98,10 @@ public class AppendProcessor extends DelegatingRequestProcessor {
     private final AtomicLong outstandingBytes = new AtomicLong();
     private final ScheduledExecutorService tokenExpiryHandlerExecutor;
 
+    // Sleep ack experiment to see related client batching behavior
+    private int numOfDelayedAcks;
+    private Timer sleepInterval;
+
     //endregion
 
     //region Builder
@@ -255,6 +259,14 @@ public class AppendProcessor extends DelegatingRequestProcessor {
                         final DataAppended dataAppendedAck = new DataAppended(append.getRequestId(), append.getWriterId(), append.getEventNumber(),
                                 previousLastAcked, newWriteOffset);
                         log.trace("Sending DataAppended : {}", dataAppendedAck);
+                        if (sleepInterval == null || sleepInterval.getElapsedMillis() > 60 * 1000) {
+                            numOfDelayedAcks = 1000;
+                            sleepInterval = new Timer();
+                        }
+                        if (numOfDelayedAcks > 0) {
+                            Exceptions.handleInterrupted(() -> Thread.sleep(10));
+                            numOfDelayedAcks--;
+                        }
                         connection.send(dataAppendedAck);
                     }
                 }
