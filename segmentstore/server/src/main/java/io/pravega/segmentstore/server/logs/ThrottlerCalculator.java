@@ -211,13 +211,13 @@ class ThrottlerCalculator {
         @Override
         int getDelayMillis() {
             QueueStats stats = this.getQueueStats.get();
-
-            // The higher the average fill rate, the more efficient use we make of the available capacity. As such, for high
-            // fill ratios we don't want to wait too long.
-            double fillRatioAdj = MathHelpers.minMax(1 - stats.getAverageItemFillRatio(), 0, 1);
-
-            // Finally, we use the the ExpectedProcessingTime to give us a baseline as to how long items usually take to process.
-            int delayMillis = (int) Math.round(stats.getExpectedProcessingTimeMillis() * fillRatioAdj);
+            // If there is some data outstanding in the queue, calculate a delay according to it (via fill ratio):
+            // 1. If the fill ratio grows up to 0.5, it means that data is queueing up and we try to wait in proportion
+            // to the queue size for making more efficient writes to Bookkeeper, increase throughput and reduce latency.
+            // 2. If the fill ratio is higher than 0.5, it means that the amount of data the system is already receiving
+            // is significant and we can reduce the waiting time, as writes are full enough to do not need extra delays.
+            final Function<Double, Double> bimodalFillRatio = (fr) -> fr <= 0.5 ? fr : 0.5 - (fr - 0.5);
+            int delayMillis = (int) (stats.getExpectedProcessingTimeMillis() * bimodalFillRatio.apply(stats.getAverageItemFillRatio()));
             return Math.min(delayMillis, MAX_BATCHING_DELAY_MILLIS);
         }
 
