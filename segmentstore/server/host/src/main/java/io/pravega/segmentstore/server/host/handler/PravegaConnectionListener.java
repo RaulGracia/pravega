@@ -186,6 +186,7 @@ public final class PravegaConnectionListener implements AutoCloseable {
          .channel(nio ? NioServerSocketChannel.class : EpollServerSocketChannel.class)
          .option(ChannelOption.SO_BACKLOG, 1024)
          .childOption(ChannelOption.TCP_NODELAY, true)
+         .childOption(ChannelOption.SO_KEEPALIVE, true)
          .childOption(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(1024, 16 * 1024, 1024 * 1024))
          .handler(new LoggingHandler(LogLevel.INFO))
          .childHandler(new ChannelInitializer<SocketChannel>() {
