@@ -12,6 +12,7 @@ package io.pravega.segmentstore.server.host.handler;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.AdaptiveRecvByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
@@ -183,7 +184,10 @@ public final class PravegaConnectionListener implements AutoCloseable {
         ServerBootstrap b = new ServerBootstrap();
         b.group(bossGroup, workerGroup)
          .channel(nio ? NioServerSocketChannel.class : EpollServerSocketChannel.class)
-         .option(ChannelOption.SO_BACKLOG, 100)
+         .option(ChannelOption.SO_BACKLOG, 1024)
+         .childOption(ChannelOption.TCP_NODELAY, true)
+         .childOption(ChannelOption.SO_KEEPALIVE, true)
+         .childOption(ChannelOption.RCVBUF_ALLOCATOR, new AdaptiveRecvByteBufAllocator(1024, 16 * 1024, 1024 * 1024))
          .handler(new LoggingHandler(LogLevel.INFO))
          .childHandler(new ChannelInitializer<SocketChannel>() {
              @Override
