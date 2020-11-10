@@ -200,9 +200,15 @@ public class BookKeeperLogFactory implements DurableDataLogFactory {
                 if (logInitializationTracker.get(logId).isBookkeeperClientResetNeeded()
                         && lastBookkeeperClientReset.get().getElapsed().compareTo(LOG_CREATION_INSPECTION_PERIOD) > 0) {
                     try {
-                        close();
-                        initialize();
+                        log.info("Start creating Bookkeeper client in reset.");
+                        BookKeeper newClient = startBookKeeperClient();
+                        // If we have been able to create a new client successfully, reset the current one and update timer.
+                        log.info("Successfully created new Bookkeeper client, setting it as the new one to use.");
+                        BookKeeper oldClient = this.bookKeeper.getAndSet(newClient);
                         lastBookkeeperClientReset.set(new Timer());
+                        // Lastly, attempt to close the old client.
+                        log.info("Attempting to close old client.");
+                        oldClient.close();
                     } catch (Exception e) {
                         log.error("Failure resetting the Bookkeeper client: ", e);
                         throw new RuntimeException("Unable to reset BookKeeper client.", e);
