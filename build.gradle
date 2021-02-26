@@ -382,6 +382,7 @@ project('segmentstore:storage:impl') {
         compile group: 'org.apache.curator', name: 'curator-framework', version: apacheCuratorVersion
         compile group: 'org.apache.bookkeeper', name: 'bookkeeper-server', version: bookKeeperVersion, withoutLogger
         testCompile project(':test:testcommon')
+        testCompile group: 'pl.pragmatists', name: 'JUnitParams', version: '1.1.1'
         testCompile project(path:':segmentstore:storage', configuration:'testRuntime')
         testCompile group: 'ch.qos.logback', name: 'logback-classic', version: qosLogbackVersion
     }
