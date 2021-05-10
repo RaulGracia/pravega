@@ -23,17 +23,17 @@
 # - github.com/apache/bookkeeper/blob/branch-4.9/docker/Dockerfile
 #
 
-FROM apache/bookkeeper:4.11.1
+FROM apache/bookkeeper:4.13.0
 
-ARG BK_VERSION=4.11.1
+ARG BK_VERSION=4.14.0
 ARG DISTRO_NAME=bookkeeper-all-${BK_VERSION}-bin
 
 RUN set -x \
     && yum install -y iproute wget \
     && cd /opt \
-    && wget -q "https://archive.apache.org/dist/bookkeeper/bookkeeper-${BK_VERSION}/${DISTRO_NAME}.tar.gz" \
-    && wget -q "https://archive.apache.org/dist/bookkeeper/bookkeeper-${BK_VERSION}/${DISTRO_NAME}.tar.gz.asc" \
-    && wget -q "https://archive.apache.org/dist/bookkeeper/bookkeeper-${BK_VERSION}/${DISTRO_NAME}.tar.gz.sha512" \
+    && wget -q "https://dist.apache.org/repos/dist/dev/bookkeeper/bookkeeper-${BK_VERSION}-rc0/${DISTRO_NAME}.tar.gz" \
+    && wget -q "https://dist.apache.org/repos/dist/dev/bookkeeper/bookkeeper-${BK_VERSION}-rc0/${DISTRO_NAME}.tar.gz.asc" \
+    && wget -q "https://dist.apache.org/repos/dist/dev/bookkeeper/bookkeeper-${BK_VERSION}-rc0/${DISTRO_NAME}.tar.gz.sha512" \
     && sha512sum -c ${DISTRO_NAME}.tar.gz.sha512 \
     && wget https://dist.apache.org/repos/dist/release/bookkeeper/KEYS \
     && gpg --import KEYS \
