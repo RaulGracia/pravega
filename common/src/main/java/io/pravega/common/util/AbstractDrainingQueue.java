@@ -13,6 +13,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import io.pravega.common.Exceptions;
 import io.pravega.common.ObjectClosedException;
+import lombok.extern.slf4j.Slf4j;
+
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.Queue;
@@ -29,6 +31,7 @@ import javax.annotation.concurrent.GuardedBy;
  *
  * @param <T> The type of the items in the queue.
  */
+@Slf4j
 public abstract class AbstractDrainingQueue<T> {
     //region Members
 
@@ -49,6 +52,7 @@ public abstract class AbstractDrainingQueue<T> {
      * The items are guaranteed not to be returned both here and via take()/poll().
      */
     public Queue<T> close() {
+        log.info("close starting");
         CompletableFuture<Queue<T>> pending = null;
         Queue<T> result = new ArrayDeque<>();
         synchronized (this.lock) {
@@ -67,9 +71,11 @@ public abstract class AbstractDrainingQueue<T> {
 
         // Cancel any pending poll request.
         if (pending != null) {
+            log.info("close cancelling pending take");
             pending.cancel(true);
         }
 
+        log.info("close exit");
         return result;
     }
 
@@ -77,6 +83,7 @@ public abstract class AbstractDrainingQueue<T> {
      * Cancels any pending Future from a take() operation.
      */
     public void cancelPendingTake() {
+        log.info("cancelPendingTake starting");
         CompletableFuture<Queue<T>> pending;
         synchronized (this.lock) {
             pending = this.pendingTake;
@@ -85,8 +92,10 @@ public abstract class AbstractDrainingQueue<T> {
 
         // Cancel any pending poll request.
         if (pending != null) {
+            log.info("cancelPendingTake had some pending take to actually cancel");
             pending.cancel(true);
         }
+        log.info("cancelPendingTake exit");
     }
 
     /**

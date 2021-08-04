@@ -148,13 +148,16 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
                 .whenComplete((r, ex) -> {
                     // The CommitProcessor is done. Safe to close its queue now, regardless of whether it failed or
                     // shut down normally.
+                    log.info("whenComplete of commitProcessor starting");
                     val uncommittedOperations = this.commitQueue.close();
-
+                    log.info("whenComplete of commitProcessor closed commit queue");
                     // Update the cacheUtilizationProvider with the fact that these operations are no longer pending for the cache.
                     uncommittedOperations.stream().flatMap(Collection::stream).forEach(this.state::notifyOperationCommitted);
                     if (ex != null) {
+                        log.info("whenComplete of commitProcessor throws {}", ex.toString());
                         throw new CompletionException(ex);
                     }
+                    log.info("whenComplete of commitProcessor exiting");
                 });
         return CompletableFuture.allOf(queueProcessor, commitProcessor)
                 .exceptionally(this::iterationErrorHandler);
@@ -163,6 +166,7 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
     @Override
     protected void doStop() {
         // We need to first stop the operation queue, which will prevent any new items from being processed.
+        log.info("doStop starting");
         Throwable ex = new CancellationException("OperationProcessor is shutting down.");
         closeQueue(ex);
 
@@ -175,13 +179,17 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
         this.throttler.close();
         this.metrics.close();
         super.doStop();
+        log.info("doStop exit");
     }
 
     @Override
     protected void errorHandler(Throwable ex) {
         ex = Exceptions.unwrap(ex);
+        log.info("errorHandler with exception: {}", ex.toString());
         closeQueue(ex);
+        log.info("errorHandler closed queue");
         if (!isShutdownException(ex)) {
+            log.info("No shutdown exception in errorHandler, so executing stopAsync");
             // Shutdown exceptions means we are already stopping, so no need to do anything else. For all other cases,
             // record the failure and then stop the OperationProcessor.
             super.errorHandler(ex);
@@ -190,10 +198,12 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
             // will prevent anything new from being added while also cancelling in-flight requests.
             this.executor.execute(this::stopAsync);
         }
+        log.info("errorHandler exit");
     }
 
     @SneakyThrows
     private Void iterationErrorHandler(Throwable ex) {
+        log.info("iterationErrorHandler starting");
         ex = Exceptions.unwrap(ex);
         // If we get an ObjectClosedException while we are shutting down, then it's safe to ignore it. It was most likely
         // caused by the queue being shut down, but the main processing loop has just started another iteration and they
@@ -201,9 +211,10 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
         State s = state();
         boolean isExpected = isShutdownException(ex) && (s == State.STOPPING || s == State.TERMINATED || s == State.FAILED);
         if (!isExpected) {
+            log.info("iterationErrorHandler non expected exception, so throwing {}", ex.toString());
             throw ex;
         }
-
+        log.info("iterationErrorHandler exit");
         return null;
     }
 
@@ -314,12 +325,14 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
                         this.state.addPending(o);
                         count++;
                     } catch (Throwable ex) {
+                        log.info("processOperations inner catch block: {}", ex.toString());
                         ex = Exceptions.unwrap(ex);
                         this.state.failOperation(o, ex);
                         if (isFatalException(ex)) {
                             // If we encountered an unrecoverable error then we cannot proceed - rethrow the Exception
                             // and let it be handled by the enclosing try-catch. Otherwise, we only need to fail this
                             // operation as its failure is isolated to itself (most likely it's invalid).
+                            log.info("processOperations inner catch block, is fatal, throwing");
                             throw ex;
                         }
                     }
@@ -349,11 +362,13 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
                     }
                 }
             } catch (Throwable ex) {
+                log.info("processOperations outer catch block: {}", ex.toString());
                 // Fail ALL the operations that haven't been acknowledged yet.
                 ex = Exceptions.unwrap(ex);
                 this.state.fail(ex, null);
 
                 if (isFatalException(ex)) {
+                    log.info("processOperations outer catch block, is fatal, throwing");
                     // If we encountered a fatal exception, it means we detected something that we cannot possibly recover from.
                     // We need to shutdown right away (this will be done by the main loop).
 
@@ -403,9 +418,12 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
      * @param causingException The exception to fail with. If null, it will default to ObjectClosedException.
      */
     private void closeQueue(Throwable causingException) {
+        log.info("closeQueue starting");
         // Close the operation queue and extract any outstanding Operations from it.
         Collection<CompletableOperation> remainingOperations = this.operationQueue.close();
+        log.info("closeQueue closed operationQueue");
         if (remainingOperations != null && remainingOperations.size() > 0) {
+            log.info("closeQueue remaining operations to close: {}", remainingOperations.size());
             // If any outstanding Operations were left in the queue, they need to be failed.
             // If no other cause was passed, assume we are closing the queue because we are shutting down.
             Throwable failException = causingException != null ? causingException : new CancellationException();
@@ -415,12 +433,14 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
         // The commit queue will auto-close when we are done and it itself is empty. We just need to unblock it in case
         // it was idle and waiting on a pending take() operation.
         this.commitQueue.cancelPendingTake();
+        log.info("closeQueue exit");
     }
 
     /**
      * Cancels those Operations in the given list that have not yet completed with the given exception.
      */
     private void cancelIncompleteOperations(Iterable<CompletableOperation> operations, Throwable failException) {
+        log.info("cancelIncompleteOperations starting");
         assert failException != null : "no exception to set";
         int cancelCount = 0;
         for (CompletableOperation o : operations) {
@@ -431,6 +451,7 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
         }
 
         log.warn("{}: Cancelling {} operations with exception: {}.", this.traceObjectId, cancelCount, failException.toString());
+        log.info("cancelIncompleteOperations exit");
     }
 
     /**
@@ -459,6 +480,7 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
 
             // Then fail the remaining operations (which also handles fatal errors) and bail out.
             if (isFatalException(ex)) {
+                log.info("processCommits is fatal, running errorHandler");
                 Callbacks.invokeSafely(OperationProcessor.this::errorHandler, ex, null);
             }
         }
@@ -633,14 +655,17 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
          * @param commitArgs The Data Frame Commit Args that triggered this action.
          */
         void fail(Throwable ex, DataFrameBuilder.CommitArgs commitArgs) {
+            log.info("fail starting");
             List<CompletableOperation> toFail = null;
             try {
                 synchronized (stateLock) {
+                    log.info("fail collecting failure candidates");
                     toFail = collectFailureCandidates(commitArgs);
                     this.pendingOperationCount -= toFail.size();
                 }
             } finally {
                 if (toFail != null) {
+                    log.info("fail failing failure candidates");
                     toFail.forEach(o -> {
                         failOperation(o, ex);
                         notifyOperationCommitted(o);
@@ -651,7 +676,9 @@ class OperationProcessor extends AbstractThreadPoolService implements AutoClosea
 
             // All exceptions are final. If we cannot write to DurableDataLog, the safest way out is to shut down and
             // perform a new recovery that will detect any possible data loss or corruption.
+            log.info("fail errorHandler ");
             Callbacks.invokeSafely(OperationProcessor.this::errorHandler, ex, null);
+            log.info("fail exit");
         }
 
         /**
