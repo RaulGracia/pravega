@@ -83,8 +83,7 @@ import org.junit.Test;
 import org.junit.rules.Timeout;
 import org.mockito.Mockito;
 
-import static org.mockito.Mockito.anyLong;
-import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for OperationProcessor class.
@@ -603,6 +602,51 @@ public class OperationProcessorTests extends OperationLogTestBase {
         Mockito.doThrow(new ObjectClosedException("Intentional")).when(objectClosedException).setSequenceNumber(anyLong());
         operations.add(0, objectClosedException);
         completionFutures = processOperations(operations, operationProcessor);
+        AssertExtensions.assertThrows(
+                "No operations failed.",
+                OperationWithCompletion.allOf(completionFutures)::join,
+                ex -> ex instanceof ObjectClosedException);
+
+        // Verify that the OperationProcessor automatically shuts down and that it has the right failure cause.
+        ServiceListeners.awaitShutdown(operationProcessor, TIMEOUT, false);
+        Assert.assertEquals("OperationProcessor is not in a failed state after ObjectClosedException detected.",
+                Service.State.FAILED, operationProcessor.state());
+        Assert.assertTrue("OperationProcessor did not fail with the correct exception.",
+                operationProcessor.failureCause() instanceof ObjectClosedException);
+        Assert.assertFalse("OperationProcessor running when it should not.", operationProcessor.isRunning());
+    }
+
+    @Test
+    public void testStartWithClosedDurableLog() throws Exception {
+        int streamSegmentCount = 100;
+        int appendsPerStreamSegment = 100;
+        int transactionsPerStreamSegment = 2;
+        boolean mergeTransactions = true;
+        boolean sealStreamSegments = true;
+
+        @Cleanup
+        TestContext context = new TestContext();
+
+        // Setup an OperationProcessor and start it.
+        @Cleanup
+        TestDurableDataLog dataLog = spy(TestDurableDataLog.create(CONTAINER_ID, MAX_DATA_LOG_APPEND_SIZE, executorService()));
+        dataLog.initialize(TIMEOUT);
+        @Cleanup
+        OperationProcessor operationProcessor = new OperationProcessor(context.metadata, context.stateUpdater,
+                dataLog, getNoOpCheckpointPolicy(), executorService());
+        operationProcessor.startAsync().awaitRunning();
+
+        // Generate some test data.
+        HashSet<Long> streamSegmentIds = createStreamSegmentsInMetadata(streamSegmentCount, context.metadata);
+        AbstractMap<Long, Long> transactions = createTransactionsInMetadata(streamSegmentIds, transactionsPerStreamSegment, context.metadata);
+        List<Operation> operations = generateOperations(streamSegmentIds, transactions, appendsPerStreamSegment,
+                METADATA_CHECKPOINT_EVERY, mergeTransactions, sealStreamSegments);
+
+        List<OperationWithCompletion> completionFutures = processOperations(operations, operationProcessor);
+        doReturn(CompletableFuture.failedFuture(new ObjectClosedException("Intentional")))
+                .when(dataLog).append(any(CompositeArrayView.class), any(Duration.class));
+
+        // Wait for all such operations to complete. We are expecting exceptions, so verify that we do.
         AssertExtensions.assertThrows(
                 "No operations failed.",
                 OperationWithCompletion.allOf(completionFutures)::join,
