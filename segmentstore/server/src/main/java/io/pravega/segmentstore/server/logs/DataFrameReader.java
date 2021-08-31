@@ -93,12 +93,14 @@ class DataFrameReader<T extends SequencedElement> implements CloseableIterator<D
                     DataFrameRecord.RecordInfo recordInfo = this.dataFrameInputStream.endRecord();
                     long seqNo = logItem.getSequenceNumber();
                     if (seqNo <= this.lastReadSequenceNumber) {
-                        throw new DataCorruptionException(String.format("Invalid Operation Sequence Number. Expected: larger than %d, found: %d.",
-                                this.lastReadSequenceNumber, seqNo));
+                        /*throw new DataCorruptionException(String.format("Invalid Operation Sequence Number. Expected: larger than %d, found: %d.",
+                                this.lastReadSequenceNumber, seqNo));*/
+                        log.error("DataCorruptionException (but skipping operation): Invalid Operation Sequence Number. Expected: larger than {}, found: {}.",
+                                this.lastReadSequenceNumber, seqNo);
+                    } else {
+                        this.lastReadSequenceNumber = seqNo;
+                        return new DataFrameRecord<>(logItem, recordInfo);
                     }
-
-                    this.lastReadSequenceNumber = seqNo;
-                    return new DataFrameRecord<>(logItem, recordInfo);
                 } catch (DataFrameInputStream.RecordResetException | DataFrameInputStream.NoMoreRecordsException ex) {
                     // We partially "deserialized" a record, but realized it was garbage (a product of a failed, partial
                     // serialization). Discard whatever we have and try again.
