@@ -20,13 +20,16 @@ import io.pravega.cli.user.TestUtils;
 import io.pravega.cli.user.config.InteractiveConfig;
 import io.pravega.cli.user.scope.ScopeCommand;
 import io.pravega.shared.NameUtils;
+import io.pravega.shared.health.StatusAggregator;
 import io.pravega.test.integration.demo.ClusterWrapper;
 import lombok.SneakyThrows;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import org.mockito.Mockito;
 
+import java.util.Arrays;
 import java.util.Collections;
 
 import static io.pravega.cli.user.TestUtils.createPravegaCluster;
@@ -128,6 +131,15 @@ public class StreamCommandTest {
         commandResult = TestUtils.executeCommand("stream read " + stream + " 5", cliConfig());
         Assert.assertTrue(commandResult.contains("Done"));
         Assert.assertNotNull(StreamCommand.Read.descriptor());
+
+        commandArgsStream = new CommandArgs(Arrays.asList("_system/requeststream", "scaleGroup"), cliConfig());
+        StreamCommand.ReaderGroupManagement command = Mockito.spy(new StreamCommand.ReaderGroupManagement(commandArgsStream));
+        Mockito.doReturn(true).doReturn(true).doReturn(true).doReturn(false)
+                .when(command).confirmContinue();
+        Mockito.doReturn("1").doReturn("2").doReturn("3").doReturn("1234")
+                .when(command).getStringFromUser(Mockito.anyString());
+        command.execute();
+
     }
 
     public static class SecureStreamCommandsTest extends StreamCommandTest {

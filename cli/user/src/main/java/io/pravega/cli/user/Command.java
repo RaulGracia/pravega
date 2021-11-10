@@ -38,13 +38,7 @@ import lombok.val;
 
 import java.io.PrintStream;
 import java.net.URI;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -183,6 +177,23 @@ public abstract class Command {
         return s;
     }
 
+    @VisibleForTesting
+    public boolean confirmContinue() {
+        output("Do you want to continue?[yes|no]");
+        @SuppressWarnings("resource")
+        Scanner s = new Scanner(System.in);
+        String input = s.nextLine();
+        return input.equals("yes");
+    }
+
+    @VisibleForTesting
+    public String getStringFromUser(String message) {
+        output(message);
+        @SuppressWarnings("resource")
+        Scanner s = new Scanner(System.in);
+        return s.nextLine();
+    }
+
     //endregion
 
     //region ScopedName
@@ -271,6 +282,7 @@ public abstract class Command {
                         .put(StreamCommand.List::descriptor, StreamCommand.List::new)
                         .put(StreamCommand.Append::descriptor, StreamCommand.Append::new)
                         .put(StreamCommand.Read::descriptor, StreamCommand.Read::new)
+                        .put(StreamCommand.ReaderGroupManagement::descriptor, StreamCommand.ReaderGroupManagement::new)
                         .put(KeyValueTableCommand.Create::descriptor, KeyValueTableCommand.Create::new)
                         .put(KeyValueTableCommand.Delete::descriptor, KeyValueTableCommand.Delete::new)
                         .put(KeyValueTableCommand.ListKVTables::descriptor, KeyValueTableCommand.ListKVTables::new)

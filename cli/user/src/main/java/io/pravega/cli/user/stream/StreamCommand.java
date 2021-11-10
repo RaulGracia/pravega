@@ -23,13 +23,8 @@ import io.pravega.cli.user.config.InteractiveConfig;
 import io.pravega.client.EventStreamClientFactory;
 import io.pravega.client.admin.ReaderGroupManager;
 import io.pravega.client.admin.StreamManager;
-import io.pravega.client.stream.EventRead;
-import io.pravega.client.stream.EventWriterConfig;
-import io.pravega.client.stream.ReaderConfig;
-import io.pravega.client.stream.ReaderGroupConfig;
-import io.pravega.client.stream.ScalingPolicy;
-import io.pravega.client.stream.Stream;
-import io.pravega.client.stream.StreamConfiguration;
+import io.pravega.client.stream.*;
+import io.pravega.client.stream.impl.PositionImpl;
 import io.pravega.client.stream.impl.UTF8StringSerializer;
 import io.pravega.common.Timer;
 import lombok.Cleanup;
@@ -37,6 +32,8 @@ import lombok.NonNull;
 import lombok.val;
 
 import java.util.Comparator;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -344,6 +341,67 @@ public abstract class StreamCommand extends Command {
                     this.count = 0;
                 }
             }
+        }
+    }
+
+    //endregion
+
+    //region ReaderGroup
+
+    public static class ReaderGroupManagement extends StreamCommand {
+        public ReaderGroupManagement(@NonNull CommandArgs commandArgs) {
+            super(commandArgs);
+        }
+
+        @Override
+        public void execute() {
+            ensureArgCount(2);
+            val scopedStream = getScopedNameArg(0);
+            val readerGroupName= getArg(1);
+
+            val clientConfig = getClientConfig();
+            val readerConfig = ReaderConfig.builder().build();
+            @Cleanup
+            val factory = EventStreamClientFactory.withScope(scopedStream.getScope(), clientConfig);
+            @Cleanup
+            val rgManager = ReaderGroupManager.withScope(scopedStream.getScope(), clientConfig);
+            val rgConfig = ReaderGroupConfig.builder().stream(scopedStream.toString()).build();
+            rgManager.getReaderGroup(readerGroupName);
+
+            @Cleanup
+            val readerGroup = rgManager.getReaderGroup(readerGroupName);
+
+            do {
+                switch (getStringFromUser("Chose the options to do with the ReaderGroup: 1) ")) {
+                    case "1":
+                        output("Online readers: ");
+                        Set<String> onlineReaders = readerGroup.getOnlineReaders();
+                        if (onlineReaders != null) {
+                            onlineReaders.forEach(this::output);
+                        }
+                        break;
+                    case "2":
+                        output("Readers segment distribution: ");
+                        Map<String, Integer> segmentDistribution = readerGroup.getReaderSegmentDistribution().getReaderSegmentDistribution();
+                        if (segmentDistribution != null) {
+                            segmentDistribution.forEach((key, value) -> output("Reader " + key + " has assigned " + value + " segments."));
+                        }
+                        break;
+                    case "3":
+                        output("Attempting to mark a Reader as offline: ");
+                        String readerId = getStringFromUser("Input reader id: ");
+                        readerGroup.readerOffline(readerId, null);
+                        break;
+                }
+
+            } while (confirmContinue());
+        }
+
+        public static CommandDescriptor descriptor() {
+            return createDescriptor("readergroup", "Allows to manage the state of a ReaderGroup.")
+                    .withArg("scoped-stream-name", "Scoped Stream name to read from.")
+                    .withArg("readergroup-name", "ReaderGroup name to read from.")
+                    .build();
         }
     }
 
