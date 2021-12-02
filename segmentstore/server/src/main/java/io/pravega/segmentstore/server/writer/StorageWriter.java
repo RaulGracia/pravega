@@ -211,6 +211,7 @@ class StorageWriter extends AbstractThreadPoolService implements Writer {
                     .read(this.config.getMaxItemsToReadAtOnce(), readTimeout)
                     .thenApply(this.state::setLastRead)
                     .exceptionally(ex -> {
+                        log.debug("{}: Exception while reading data from operationLog", this.traceObjectId, ex);
                         ex = Exceptions.unwrap(ex);
                         if (ex instanceof TimeoutException) {
                             // TimeoutExceptions are acceptable for Reads. In that case we just return null as opposed from
@@ -219,16 +220,19 @@ class StorageWriter extends AbstractThreadPoolService implements Writer {
                             log.debug("{}: Iteration[{}] No items were read during allotted timeout of {}ms", this.traceObjectId, this.state.getIterationId(), readTimeout.toMillis());
                             return null;
                         } else {
+                            log.debug("{}: Throwing CompletionException", this.traceObjectId);
                             throw new CompletionException(ex);
                         }
                     });
         } catch (Throwable ex) {
+            log.debug("{}: Synchronous exception while reading data from operationLog", this.traceObjectId, ex);
             // This is for synchronous exceptions.
             Throwable realEx = Exceptions.unwrap(ex);
             if (realEx instanceof TimeoutException) {
                 logErrorHandled(realEx);
                 return CompletableFuture.completedFuture(null);
             } else {
+                log.debug("{}: Failing future in readData", this.traceObjectId);
                 return Futures.failedFuture(ex);
             }
         }
@@ -240,10 +244,14 @@ class StorageWriter extends AbstractThreadPoolService implements Writer {
      * @param readResult The read result to process.
      */
     private CompletableFuture<Void> processReadResult(Queue<Operation> readResult) {
+        log.debug("{}: Entering processReadResult", this.traceObjectId);
         InputReadStageResult result = new InputReadStageResult(this.state);
+        log.debug("{}: Instantiated InputReadStageResult", this.traceObjectId);
         if (readResult == null) {
+            log.debug("{}: InputReadStageResult is null", this.traceObjectId);
             // This happens when we get a TimeoutException from the read operation.
             this.state.recordReadComplete();
+            log.debug("{}: Execute recordReadComplete()", this.traceObjectId);
             this.metrics.readComplete(0);
             logStageEvent("InputRead", result);
             return CompletableFuture.completedFuture(null);
@@ -254,19 +262,26 @@ class StorageWriter extends AbstractThreadPoolService implements Writer {
                 () -> {
                     // Peek, but do not remove, the first operation. We want to ensure that we have properly processed it
                     // so that we don't lose track of it.
+                    log.debug("{}: Entering processReadResult main loop", this.traceObjectId);
                     Operation op = readResult.peek();
+                    log.debug("{}: Peek operation {}", this.traceObjectId, op);
                     return processOperation(op).thenRun(() -> {
                         // We have now internalized all operations from this batch; and even if subsequent operations in this iteration
                         // fail, we no longer need to re-read these operations, so update the state with the last read SeqNo.
+                        log.debug("{}: thenRun after processing operation {}", this.traceObjectId, op);
                         this.state.setLastReadSequenceNumber(op.getSequenceNumber());
+                        log.debug("{}: Polling element from readResult", this.traceObjectId);
                         readResult.poll(); // Actually remove the operation now.
+                        log.debug("{}: Adding operation as processed in result", this.traceObjectId);
                         result.operationProcessed(op);
                     });
                 },
                 this.executor)
                 .thenRun(() -> {
+                    log.debug("{}: Finished processing batch of operations", this.traceObjectId);
                     // Clear the last read result from the state before exiting.
                     Preconditions.checkState(readResult.isEmpty(), "processReadResult exited normally but there are still {} items to process.", readResult.size());
+                    log.debug("{}: Setting setLastRead to null", this.traceObjectId);
                     this.state.setLastRead(null);
                     logStageEvent("InputRead", result);
                 });
@@ -433,37 +448,54 @@ class StorageWriter extends AbstractThreadPoolService implements Writer {
      * @param streamSegmentId The Id of the StreamSegment to get the aggregator for.
      */
     private CompletableFuture<ProcessorCollection> getProcessor(long streamSegmentId) {
+        log.debug("{}: Entering getProcessor for segment {}", this.traceObjectId, streamSegmentId);
         ProcessorCollection existingProcessor = this.processors.getOrDefault(streamSegmentId, null);
+        log.debug("{}: Existing processor for that segment {}", this.traceObjectId, existingProcessor);
         if (existingProcessor != null) {
             if (closeIfNecessary(existingProcessor).isClosed()) {
+                log.debug("{}: Removing processor for segment {}", this.traceObjectId, streamSegmentId);
                 // Existing SegmentAggregator has become stale (most likely due to its SegmentMetadata being evicted),
                 // so it has been closed and we need to create a new one.
                 this.processors.remove(streamSegmentId);
             } else {
+                log.debug("{}: Returning future with existing processor {}", this.traceObjectId, existingProcessor);
                 return CompletableFuture.completedFuture(existingProcessor);
             }
         }
 
+        log.debug("{}: Getting SegmentAggregator metadata for {}", this.traceObjectId, streamSegmentId);
         // Get the SegmentAggregator's Metadata.
         UpdateableSegmentMetadata segmentMetadata = this.dataSource.getStreamSegmentMetadata(streamSegmentId);
+        log.debug("{}: Segment metadata {}", this.traceObjectId, segmentMetadata);
         if (segmentMetadata == null) {
+            log.debug("{}: Segment metadata is null, so failing with DataCorruptionException", this.traceObjectId);
             return Futures.failedFuture(new DataCorruptionException(String.format(
                     "No StreamSegment with id '%d' is registered in the metadata.", streamSegmentId)));
         }
 
+        log.debug("{}: Segment metadata {}", this.traceObjectId, segmentMetadata);
         // Then create the aggregator, and only register it after a successful initialization. Otherwise we risk
         // having a registered aggregator that is not initialized.
         SegmentAggregator segmentAggregator = new SegmentAggregator(segmentMetadata, this.dataSource, this.storage, this.config, this.timer, this.executor);
+        log.debug("{}: Instantiating SegmentAggregator {}", this.traceObjectId, segmentAggregator);
         AttributeAggregator attributeAggregator = new AttributeAggregator(segmentMetadata, this.dataSource, this.config, this.timer, this.executor);
+        log.debug("{}: Instantiating AttributeAggregator {}", this.traceObjectId, attributeAggregator);
         ProcessorCollection pc = new ProcessorCollection(segmentAggregator, attributeAggregator, this.createProcessors.apply(segmentMetadata));
+        log.debug("{}: Instantiating ProcessorCollection {}", this.traceObjectId, pc);
         try {
             CompletableFuture<Void> init = segmentAggregator.initialize(this.config.getFlushTimeout());
-            Futures.exceptionListener(init, ex -> segmentAggregator.close());
+            log.debug("{}: Initializing segmentAggregator", this.traceObjectId);
+            Futures.exceptionListener(init, ex -> {
+                log.debug("{}: Exception while initializing segmentAggregator.", this.traceObjectId, ex);
+                segmentAggregator.close();
+            });
             return init.thenApply(ignored -> {
+                log.debug("{}: Putting ProcessorCollection for segment {}", this.traceObjectId, streamSegmentId);
                 this.processors.put(streamSegmentId, pc);
                 return pc;
             });
         } catch (Exception ex) {
+            log.debug("{}: Exception during the segmentAggregator initialization for segment {}", this.traceObjectId, streamSegmentId);
             pc.close();
             throw ex;
         }
