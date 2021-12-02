@@ -116,7 +116,7 @@ class SegmentAggregator implements WriterSegmentProcessor, AutoCloseable {
     SegmentAggregator(UpdateableSegmentMetadata segmentMetadata, WriterDataSource dataSource, Storage storage, WriterConfig config, AbstractTimer timer, Executor executor) {
         this.metadata = Preconditions.checkNotNull(segmentMetadata, "segmentMetadata");
         Preconditions.checkArgument(this.metadata.getContainerId() == dataSource.getId(), "SegmentMetadata.ContainerId is different from WriterDataSource.Id");
-        this.traceObjectId = String.format("StorageWriter[%d-%d]", this.metadata.getContainerId(), this.metadata.getId());
+        this.traceObjectId = String.format("SegmentAggregator[%d-%d]", this.metadata.getContainerId(), this.metadata.getId());
 
         this.config = Preconditions.checkNotNull(config, "config");
         this.storage = Preconditions.checkNotNull(storage, "storage");
