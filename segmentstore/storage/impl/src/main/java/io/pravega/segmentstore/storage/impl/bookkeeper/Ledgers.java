@@ -53,6 +53,13 @@ public final class Ledgers {
     static final int NO_LOG_ID = -1;
     static final long NO_LEDGER_ID = -1; // LedgerHandle.INVALID_LEDGER_ID
     static final long NO_ENTRY_ID = -1; // LedgerHandle.INVALID_ENTRY_ID
+
+    /**
+     * For special log repair operations, we allow the LogReader to read from a special log id that contains
+     * admin-provided changes to repair the original lod data.
+     */
+    static final int REPAIR_LOG_ID = Integer.MAX_VALUE;
+
     /**
      * How many ledgers to fence out (from the end of the list) when acquiring lock.
      */
