@@ -16,7 +16,7 @@
 package io.pravega.segmentstore.storage;
 
 /**
- * Defines a listener that will be notified every time the state of the a Throttling Source changed.
+ * Defines a listener that will be notified every time the state of a Throttling Source changed.
  */
 public interface ThrottleSourceListener {
     /**

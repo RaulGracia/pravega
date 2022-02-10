@@ -29,6 +29,7 @@ import io.pravega.segmentstore.server.CacheManager.CacheManagerHealthContributor
 import io.pravega.segmentstore.server.host.delegationtoken.TokenVerifierImpl;
 import io.pravega.segmentstore.server.host.handler.AdminConnectionListener;
 import io.pravega.segmentstore.server.host.handler.PravegaConnectionListener;
+import io.pravega.segmentstore.server.host.handler.ReadPrefetchManager;
 import io.pravega.segmentstore.server.host.health.ZKHealthContributor;
 import io.pravega.shared.health.bindings.resources.HealthImpl;
 import io.pravega.segmentstore.server.host.stat.AutoScaleMonitor;
@@ -114,16 +115,16 @@ public final class ServiceStarter {
     public void start() throws Exception {
         Exceptions.checkNotClosed(this.closed, this);
 
-        healthServiceManager = new HealthServiceManager(serviceConfig.getHealthCheckInterval());
-        healthServiceManager.start();
+        this.healthServiceManager = new HealthServiceManager(this.serviceConfig.getHealthCheckInterval());
+        this.healthServiceManager.start();
         log.info("Initializing HealthService ...");
 
-        MetricsConfig metricsConfig = builderConfig.getConfig(MetricsConfig::builder);
+        MetricsConfig metricsConfig = this.builderConfig.getConfig(MetricsConfig::builder);
         if (metricsConfig.isEnableStatistics()) {
             log.info("Initializing metrics provider ...");
             MetricsProvider.initialize(metricsConfig);
-            statsProvider = MetricsProvider.getMetricsProvider();
-            statsProvider.start();
+            this.statsProvider = MetricsProvider.getMetricsProvider();
+            this.statsProvider.start();
         }
 
         log.info("Initializing ZooKeeper Client ...");
@@ -139,53 +140,54 @@ public final class ServiceStarter {
         TableStore tableStoreService = this.serviceBuilder.createTableStoreService();
 
         log.info("Creating Segment Stats recorder ...");
-        autoScaleMonitor = new AutoScaleMonitor(service, builderConfig.getConfig(AutoScalerConfig::builder));
+        this.autoScaleMonitor = new AutoScaleMonitor(service, this.builderConfig.getConfig(AutoScalerConfig::builder));
 
-        AutoScalerConfig autoScalerConfig = builderConfig.getConfig(AutoScalerConfig::builder);
+        AutoScalerConfig autoScalerConfig = this.builderConfig.getConfig(AutoScalerConfig::builder);
         TokenVerifierImpl tokenVerifier = null;
         if (autoScalerConfig.isAuthEnabled()) {
             tokenVerifier = new TokenVerifierImpl(autoScalerConfig.getTokenSigningKey());
         }
 
         // Log the configuration
-        log.info(serviceConfig.toString());
+        log.info(this.serviceConfig.toString());
         log.info(autoScalerConfig.toString());
 
+        ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(() -> this.serviceBuilder.getCacheManager().isEssentialEntriesOnly());
         this.listener = new PravegaConnectionListener(this.serviceConfig.isEnableTls(), this.serviceConfig.isEnableTlsReload(),
                                                       this.serviceConfig.getListeningIPAddress(),
                                                       this.serviceConfig.getListeningPort(), service, tableStoreService,
-                                                      autoScaleMonitor.getStatsRecorder(), autoScaleMonitor.getTableSegmentStatsRecorder(),
+                                                      this.autoScaleMonitor.getStatsRecorder(), this.autoScaleMonitor.getTableSegmentStatsRecorder(),
                                                       tokenVerifier, this.serviceConfig.getCertFile(), this.serviceConfig.getKeyFile(),
-                                                      this.serviceConfig.isReplyWithStackTraceOnError(), serviceBuilder.getLowPriorityExecutor(),
-                                                      this.serviceConfig.getTlsProtocolVersion(), healthServiceManager);
+                                                      this.serviceConfig.isReplyWithStackTraceOnError(), this.serviceBuilder.getLowPriorityExecutor(),
+                                                      this.serviceConfig.getTlsProtocolVersion(), this.healthServiceManager, readPrefetchManager);
 
         this.listener.startListening();
         log.info("PravegaConnectionListener started successfully.");
 
-        if (serviceConfig.isEnableAdminGateway()) {
+        if (this.serviceConfig.isEnableAdminGateway()) {
             this.adminListener = new AdminConnectionListener(this.serviceConfig.isEnableTls(), this.serviceConfig.isEnableTlsReload(),
                     this.serviceConfig.getListeningIPAddress(), this.serviceConfig.getAdminGatewayPort(), service, tableStoreService,
                     tokenVerifier, this.serviceConfig.getCertFile(), this.serviceConfig.getKeyFile(), this.serviceConfig.getTlsProtocolVersion(),
-                    healthServiceManager);
+                    this.healthServiceManager);
             this.adminListener.startListening();
             log.info("AdminConnectionListener started successfully.");
         }
         log.info("StreamSegmentService started.");
 
-        healthServiceManager.register(new ZKHealthContributor(zkClient));
-        healthServiceManager.register(new CacheManagerHealthContributor(serviceBuilder.getCacheManager()));
-        healthServiceManager.register(new SegmentContainerRegistryHealthContributor(serviceBuilder.getSegmentContainerRegistry()));
+        this.healthServiceManager.register(new ZKHealthContributor(this.zkClient));
+        this.healthServiceManager.register(new CacheManagerHealthContributor(this.serviceBuilder.getCacheManager()));
+        this.healthServiceManager.register(new SegmentContainerRegistryHealthContributor(this.serviceBuilder.getSegmentContainerRegistry()));
 
         if (this.serviceConfig.isRestServerEnabled()) {
             log.info("Initializing RESTServer ...");
             List<Object> resources = new ArrayList<>();
-            resources.add(new HealthImpl(new AuthHandlerManager(serviceConfig.getRestServerConfig()), healthServiceManager.getEndpoint()));
+            resources.add(new HealthImpl(new AuthHandlerManager(this.serviceConfig.getRestServerConfig()), this.healthServiceManager.getEndpoint()));
 
             MetricsProvider.getMetricsProvider().prometheusResource().ifPresent(resources::add);
 
-            restServer = new RESTServer(serviceConfig.getRestServerConfig(), Set.copyOf(resources));
-            restServer.startAsync();
-            restServer.awaitRunning();
+            this.restServer = new RESTServer(this.serviceConfig.getRestServerConfig(), Set.copyOf(resources));
+            this.restServer.startAsync();
+            this.restServer.awaitRunning();
         }
     }
 

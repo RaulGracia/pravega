@@ -64,7 +64,7 @@ public interface SegmentMetadata extends SegmentProperties {
     long getStorageLength();
 
     /**
-     * Gets a value representing the when the Segment was last used. The meaning of this value is implementation specific,
+     * Gets a value representing the moment when the Segment was last used. The meaning of this value is implementation specific,
      * however higher values should indicate it was used more recently.
      * @return The value representing when the Segment last used.
      */

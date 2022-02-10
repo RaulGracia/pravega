@@ -130,10 +130,7 @@ import static io.pravega.segmentstore.contracts.Attributes.CREATION_TIME;
 import static io.pravega.segmentstore.contracts.Attributes.ROLLOVER_SIZE;
 import static io.pravega.segmentstore.contracts.Attributes.SCALE_POLICY_RATE;
 import static io.pravega.segmentstore.contracts.Attributes.SCALE_POLICY_TYPE;
-import static io.pravega.segmentstore.contracts.ReadResultEntryType.Cache;
-import static io.pravega.segmentstore.contracts.ReadResultEntryType.EndOfStreamSegment;
-import static io.pravega.segmentstore.contracts.ReadResultEntryType.Future;
-import static io.pravega.segmentstore.contracts.ReadResultEntryType.Truncated;
+import static io.pravega.segmentstore.contracts.ReadResultEntryType.*;
 import static io.pravega.shared.protocol.netty.WireCommands.TYPE_PLUS_LENGTH_SIZE;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
@@ -159,6 +156,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
     private final boolean replyWithStackTraceOnError;
     @Getter(AccessLevel.PROTECTED)
     private final TrackedConnection connection;
+    private final ReadPrefetchManager readPrefetchManager;
 
     //endregion
 
@@ -174,7 +172,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
     @VisibleForTesting
     public PravegaRequestProcessor(StreamSegmentStore segmentStore, TableStore tableStore, ServerConnection connection) {
         this(segmentStore, tableStore, new TrackedConnection(connection, new ConnectionTracker()), SegmentStatsRecorder.noOp(),
-                TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false);
+                TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
     }
 
     /**
@@ -190,7 +188,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
      */
     PravegaRequestProcessor(@NonNull StreamSegmentStore segmentStore, @NonNull TableStore tableStore, @NonNull TrackedConnection connection,
                             @NonNull SegmentStatsRecorder statsRecorder, @NonNull TableSegmentStatsRecorder tableStatsRecorder,
-                            @NonNull DelegationTokenVerifier tokenVerifier, boolean replyWithStackTraceOnError) {
+                            @NonNull DelegationTokenVerifier tokenVerifier, boolean replyWithStackTraceOnError, ReadPrefetchManager readPrefetchManager) {
         this.segmentStore = segmentStore;
         this.tableStore = tableStore;
         this.connection = connection;
@@ -198,6 +196,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
         this.statsRecorder = statsRecorder;
         this.tableStatsRecorder = tableStatsRecorder;
         this.replyWithStackTraceOnError = replyWithStackTraceOnError;
+        this.readPrefetchManager = readPrefetchManager;
     }
 
     //endregion
@@ -223,7 +222,8 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
                         this.statsRecorder.readComplete(timer.getElapsed());
                     })
                     .exceptionally(ex -> handleException(readSegment.getRequestId(), segment, readSegment.getOffset(), operation,
-                                                         wrapCancellationException(ex)));
+                                                         wrapCancellationException(ex)))
+                    .thenRun(() -> readPrefetchManager.tryPrefetchData(segmentStore, segment, readSegment));
     }
 
     protected boolean verifyToken(String segment, long requestId, String delegationToken, String operation) {
@@ -264,6 +264,10 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
         boolean truncated = nonCachedEntry != null && nonCachedEntry.getType() == Truncated;
         boolean endOfSegment = nonCachedEntry != null && nonCachedEntry.getType() == EndOfStreamSegment;
         boolean atTail = nonCachedEntry != null && nonCachedEntry.getType() == Future;
+        boolean fromStorage = nonCachedEntry != null && nonCachedEntry.getType() == Storage;
+
+        // Keep ReadPrefetchManager informed about results of reads and then return if the request is of type prefetch.
+        this.readPrefetchManager.collectInfoFromRead(request, result, truncated, endOfSegment, atTail, fromStorage);
 
         if (!cachedEntries.isEmpty() || endOfSegment) {
             // We managed to collect some data. Send it.

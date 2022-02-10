@@ -57,6 +57,7 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
     private final ScheduledExecutorService tokenExpiryHandlerExecutor; // Used for running token expiry handling tasks.
 
     private final boolean replyWithStackTraceOnError;
+    private final ReadPrefetchManager readPrefetchManager;
 
     //endregion
 
@@ -77,7 +78,7 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
                                      TableStore tableStore, ScheduledExecutorService tokenExpiryExecutor, String[] tlsProtocolVersion) {
         this(enableTls, false, "localhost", port, streamSegmentStore, tableStore,
                 SegmentStatsRecorder.noOp(), TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), null,
-                null, true, tokenExpiryExecutor, tlsProtocolVersion, null);
+                null, true, tokenExpiryExecutor, tlsProtocolVersion, null, null);
     }
 
     /**
@@ -118,7 +119,7 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
                                      SegmentStatsRecorder statsRecorder, TableSegmentStatsRecorder tableStatsRecorder,
                                      DelegationTokenVerifier tokenVerifier, String certFile, String keyFile,
                                      boolean replyWithStackTraceOnError, ScheduledExecutorService executor, String[] tlsProtocolVersion,
-                                     HealthServiceManager healthServiceManager) {
+                                     HealthServiceManager healthServiceManager, ReadPrefetchManager readPrefetchManager) {
         super(enableTls, enableTlsReload, host, port, certFile, keyFile, tlsProtocolVersion, healthServiceManager);
         this.store = Preconditions.checkNotNull(streamSegmentStore, "streamSegmentStore");
         this.tableStore = Preconditions.checkNotNull(tableStore, "tableStore");
@@ -127,6 +128,7 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
         this.replyWithStackTraceOnError = replyWithStackTraceOnError;
         this.tokenVerifier = (tokenVerifier != null) ? tokenVerifier : new PassingTokenVerifier();
         this.tokenExpiryHandlerExecutor = executor;
+        this.readPrefetchManager = readPrefetchManager;
     }
 
     /**
@@ -152,13 +154,13 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
                                      DelegationTokenVerifier tokenVerifier, String certFile, String keyFile,
                                      boolean replyWithStackTraceOnError, ScheduledExecutorService executor, String[] tlsProtocolVersion) {
         this(enableTls, enableTlsReload, host, port, streamSegmentStore, tableStore, statsRecorder, tableStatsRecorder,
-                 tokenVerifier, certFile, keyFile, replyWithStackTraceOnError, executor, tlsProtocolVersion, null);
+                 tokenVerifier, certFile, keyFile, replyWithStackTraceOnError, executor, tlsProtocolVersion, null, null);
     }
 
     @Override
     public RequestProcessor createRequestProcessor(TrackedConnection c) {
         PravegaRequestProcessor prp = new PravegaRequestProcessor(store, tableStore, c, statsRecorder,
-                tableStatsRecorder, tokenVerifier, replyWithStackTraceOnError);
+                tableStatsRecorder, tokenVerifier, replyWithStackTraceOnError, readPrefetchManager);
         return new AppendProcessor(store, c, prp, statsRecorder, tokenVerifier, replyWithStackTraceOnError,
                 tokenExpiryHandlerExecutor);
     }
