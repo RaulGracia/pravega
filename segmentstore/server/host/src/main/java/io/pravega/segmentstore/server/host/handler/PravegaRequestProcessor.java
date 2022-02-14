@@ -267,7 +267,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
         boolean fromStorage = nonCachedEntry != null && nonCachedEntry.getType() == Storage;
 
         // Keep ReadPrefetchManager informed about results of reads and then return if the request is of type prefetch.
-        this.readPrefetchManager.collectInfoFromRead(request, result, truncated, endOfSegment, atTail, fromStorage);
+        this.readPrefetchManager.collectInfoFromRead(request, result, fromStorage);
 
         if (!cachedEntries.isEmpty() || endOfSegment) {
             // We managed to collect some data. Send it.
