@@ -78,7 +78,7 @@ public class ServiceBuilder implements AutoCloseable {
     private final SegmentStoreMetrics.ThreadPool threadPoolMetrics;
     private final SegmentToContainerMapper segmentToContainerMapper;
     private final ServiceBuilderConfig serviceBuilderConfig;
-    @Getter(AccessLevel.PROTECTED)
+    @Getter(AccessLevel.PUBLIC)
     private final ScheduledExecutorService coreExecutor;
     private final ScheduledExecutorService storageExecutor;
     @Getter(AccessLevel.PUBLIC)

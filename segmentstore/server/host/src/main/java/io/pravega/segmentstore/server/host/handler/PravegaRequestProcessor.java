@@ -108,6 +108,7 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -172,7 +173,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
     @VisibleForTesting
     public PravegaRequestProcessor(StreamSegmentStore segmentStore, TableStore tableStore, ServerConnection connection) {
         this(segmentStore, tableStore, new TrackedConnection(connection, new ConnectionTracker()), SegmentStatsRecorder.noOp(),
-                TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager());
     }
 
     /**
@@ -251,8 +252,8 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
     /**
      * Handles a readResult.
      * If there are cached entries that can be returned without blocking only these are returned.
-     * Otherwise the call will request the data and setup a callback to return the data when it is available.
-     * If no data is available but it was detected that the Segment had been truncated beyond the current offset,
+     * Otherwise, the call will request the data and setup a callback to return the data when it is available.
+     * If no data is available, but it was detected that the Segment had been truncated beyond the current offset,
      * an appropriate message is sent back over the connection.
      */
     private void handleReadResult(ReadSegment request, ReadResult result) {
@@ -267,7 +268,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
         boolean fromStorage = nonCachedEntry != null && nonCachedEntry.getType() == Storage;
 
         // Keep ReadPrefetchManager informed about results of reads and then return if the request is of type prefetch.
-        this.readPrefetchManager.collectInfoFromRead(request, result, fromStorage);
+        this.readPrefetchManager.collectInfoFromUserRead(request, result, fromStorage);
 
         if (!cachedEntries.isEmpty() || endOfSegment) {
             // We managed to collect some data. Send it.

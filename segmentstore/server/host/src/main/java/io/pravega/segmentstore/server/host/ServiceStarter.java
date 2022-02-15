@@ -30,6 +30,7 @@ import io.pravega.segmentstore.server.host.delegationtoken.TokenVerifierImpl;
 import io.pravega.segmentstore.server.host.handler.AdminConnectionListener;
 import io.pravega.segmentstore.server.host.handler.PravegaConnectionListener;
 import io.pravega.segmentstore.server.host.handler.ReadPrefetchManager;
+import io.pravega.segmentstore.server.host.handler.ReadPrefetchManagerConfig;
 import io.pravega.segmentstore.server.host.health.ZKHealthContributor;
 import io.pravega.shared.health.bindings.resources.HealthImpl;
 import io.pravega.segmentstore.server.host.stat.AutoScaleMonitor;
@@ -152,14 +153,13 @@ public final class ServiceStarter {
         log.info(this.serviceConfig.toString());
         log.info(autoScalerConfig.toString());
 
-        ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(() -> this.serviceBuilder.getCacheManager().isEssentialEntriesOnly());
         this.listener = new PravegaConnectionListener(this.serviceConfig.isEnableTls(), this.serviceConfig.isEnableTlsReload(),
                                                       this.serviceConfig.getListeningIPAddress(),
                                                       this.serviceConfig.getListeningPort(), service, tableStoreService,
                                                       this.autoScaleMonitor.getStatsRecorder(), this.autoScaleMonitor.getTableSegmentStatsRecorder(),
                                                       tokenVerifier, this.serviceConfig.getCertFile(), this.serviceConfig.getKeyFile(),
                                                       this.serviceConfig.isReplyWithStackTraceOnError(), this.serviceBuilder.getLowPriorityExecutor(),
-                                                      this.serviceConfig.getTlsProtocolVersion(), this.healthServiceManager, readPrefetchManager);
+                                                      this.serviceConfig.getTlsProtocolVersion(), this.healthServiceManager, createReadPrefetchManager());
 
         this.listener.startListening();
         log.info("PravegaConnectionListener started successfully.");
@@ -346,6 +346,11 @@ public final class ServiceStarter {
                 return this.client;
             }
         }
+    }
+
+    private ReadPrefetchManager createReadPrefetchManager() {
+        return new ReadPrefetchManager(() -> this.serviceBuilder.getCacheManager().isEssentialEntriesOnly(),
+                this.builderConfig.getConfig(ReadPrefetchManagerConfig::builder), this.serviceBuilder.getCoreExecutor());
     }
 
     //endregion

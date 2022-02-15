@@ -374,7 +374,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(SegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, mock(TableStore.class), new TrackedConnection(connection),
-                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Execute and Verify createSegment/getStreamSegmentInfo calling stack is executed as design.
         processor.createSegment(new WireCommands.CreateSegment(1, streamSegmentName, WireCommands.CreateSegment.NO_SCALE, 0, "", 0));
@@ -598,7 +598,7 @@ public class PravegaRequestProcessorTest {
         doReturn(txnFuture).when(store).mergeStreamSegment(anyString(), anyString(), any(), any());
         SegmentStatsRecorder recorderMock = mock(SegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, mock(TableStore.class), new TrackedConnection(connection),
-                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         processor.createSegment(new WireCommands.CreateSegment(0, streamSegmentName, WireCommands.CreateSegment.NO_SCALE, 0, "", 0));
         String transactionName = NameUtils.getTransactionNameFromId(streamSegmentName, txnId);
@@ -626,7 +626,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         SegmentStatsRecorder recorderMock = mock(SegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, mock(TableStore.class), new TrackedConnection(connection),
-                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         processor.createSegment(new WireCommands.CreateSegment(0, streamSegmentName, WireCommands.CreateSegment.NO_SCALE, 0, "", 0L));
         order.verify(connection).send(new WireCommands.SegmentCreated(0, streamSegmentName));
@@ -678,7 +678,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         SegmentStatsRecorder recorderMock = mock(SegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, mock(TableStore.class), new TrackedConnection(connection),
-                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                recorderMock, TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         processor.createSegment(new WireCommands.CreateSegment(0, streamSegmentName, WireCommands.CreateSegment.NO_SCALE, 0, "", 0L));
         order.verify(connection).send(new WireCommands.SegmentCreated(0, streamSegmentName));
@@ -832,7 +832,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         int requestId = 0;
 
@@ -903,7 +903,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection, tracker),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         //Generate keys
         ArrayList<ArrayView> keys = generateKeys(3, rnd);
@@ -981,7 +981,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection, tracker),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Generate keys.
         ArrayList<ArrayView> keys = generateKeys(3, rnd);
@@ -1043,7 +1043,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Create a table segment.
         processor.createTableSegment(new WireCommands.CreateTableSegment(1, tableSegmentName, false, 0, "", 0));
@@ -1069,7 +1069,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Generate keys.
         ArrayList<ArrayView> keys = generateKeys(2, rnd);
@@ -1105,7 +1105,7 @@ public class PravegaRequestProcessorTest {
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         val recorderMockOrder = inOrder(recorderMock);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Generate keys.
         ArrayList<ArrayView> keys = generateKeys(2, rnd);
@@ -1156,7 +1156,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Generate keys.
         ArrayList<ArrayView> keys = generateKeys(3, rnd);
@@ -1229,7 +1229,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Generate keys.
         ArrayList<ArrayView> keys = generateKeys(3, rnd);
@@ -1311,7 +1311,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection), SegmentStatsRecorder.noOp(),
-                recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         processor.createTableSegment(new WireCommands.CreateTableSegment(1, tableSegmentName, false, 0, "", 0));
         order.verify(connection).send(new WireCommands.SegmentCreated(1, tableSegmentName));
@@ -1337,7 +1337,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection), SegmentStatsRecorder.noOp(),
-                recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         processor.createTableSegment(new WireCommands.CreateTableSegment(1, tableSegmentName, false, 0, "", 0));
         order.verify(connection).send(new WireCommands.SegmentCreated(1, tableSegmentName));
@@ -1377,7 +1377,7 @@ public class PravegaRequestProcessorTest {
         InOrder order = inOrder(connection);
         val recorderMock = mock(TableSegmentStatsRecorder.class);
         PravegaRequestProcessor processor = new PravegaRequestProcessor(store, tableStore, new TrackedConnection(connection),
-                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager(() -> true));
+                SegmentStatsRecorder.noOp(), recorderMock, new PassingTokenVerifier(), false, new ReadPrefetchManager());
 
         // Generate keys.
         ArrayList<ArrayView> keys = generateKeys(3, rnd);
