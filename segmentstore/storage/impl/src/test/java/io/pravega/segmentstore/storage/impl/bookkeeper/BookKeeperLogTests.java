@@ -18,18 +18,21 @@ package io.pravega.segmentstore.storage.impl.bookkeeper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
-import io.pravega.common.Exceptions;
 import io.pravega.common.ObjectClosedException;
 import io.pravega.common.concurrent.Futures;
-import io.pravega.common.util.BufferView;
 import io.pravega.common.util.CompositeByteArraySegment;
 import io.pravega.common.util.RetriesExhaustedException;
-import io.pravega.segmentstore.storage.*;
+import io.pravega.segmentstore.storage.DataLogCorruptedException;
+import io.pravega.segmentstore.storage.DataLogNotAvailableException;
+import io.pravega.segmentstore.storage.DataLogWriterNotPrimaryException;
+import io.pravega.segmentstore.storage.DurableDataLog;
+import io.pravega.segmentstore.storage.DurableDataLogException;
+import io.pravega.segmentstore.storage.DurableDataLogTestBase;
+import io.pravega.segmentstore.storage.LogAddress;
+import io.pravega.segmentstore.storage.ThrottleSourceListener;
+import io.pravega.segmentstore.storage.WriteFailureException;
 import io.pravega.test.common.AssertExtensions;
 import io.pravega.test.common.TestUtils;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -45,7 +48,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -87,7 +89,7 @@ public abstract class BookKeeperLogTests extends DurableDataLogTestBase {
     private static final int MAX_LEDGER_SIZE = WRITE_MAX_LENGTH * Math.max(10, WRITE_COUNT / 20);
 
     @Rule
-    public Timeout globalTimeout = Timeout.seconds(100000);
+    public Timeout globalTimeout = Timeout.seconds(100);
     private final AtomicReference<BookKeeperConfig> config = new AtomicReference<>();
     private final AtomicReference<CuratorFramework> zkClient = new AtomicReference<>();
     private final AtomicReference<BookKeeperLogFactory> factory = new AtomicReference<>();
@@ -148,7 +150,6 @@ public abstract class BookKeeperLogTests extends DurableDataLogTestBase {
                 .with(BookKeeperConfig.BK_ACK_QUORUM_SIZE, BOOKIE_COUNT)
                 .with(BookKeeperConfig.BK_TLS_ENABLED, isSecure())
                 .with(BookKeeperConfig.BK_WRITE_TIMEOUT, 5000)
-                .with(BookKeeperConfig.BK_LEDGER_MAX_SIZE, 100)
                 .build());
 
         // Create default factory.
@@ -695,59 +696,6 @@ public abstract class BookKeeperLogTests extends DurableDataLogTestBase {
         AssertExtensions.assertListEquals("Unexpected ledger list.", expectedLedgers, newLedgers, Long::equals);
 
         checkLogReadAfterReconciliation(expectedLedgers.size());
-    }
-
-    @Test
-    public void testBookkeeperRollover() throws DurableDataLogException {
-        val log = (BookKeeperLog) createDurableDataLog();
-        log.initialize(TIMEOUT);
-        AtomicBoolean duplicateFound = new AtomicBoolean(false);
-        AtomicLong sequence = new AtomicLong(0);
-        AtomicLong readSequence = new AtomicLong(0);
-
-        // Start a process just writing data.
-        CompletableFuture<Void> writer = CompletableFuture.runAsync(() -> {
-            while (!duplicateFound.get()) {
-                for (int i = 0; i < 100; i++) {
-                    //System.err.println("WRITING " + sequence.get());
-                    ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-                    buffer.putLong(sequence.getAndIncrement());
-                    log.append(new CompositeByteArraySegment(buffer.array()), TIMEOUT).join();
-                    //Exceptions.handleInterrupted(() -> Thread.sleep(1));
-                }
-                System.err.println("WRITING " + sequence.get());
-                LogAddress toTruncate = null;
-                try {
-                    DebugDurableDataLogWrapper wrapper = this.factory.get().createDebugLogWrapper(CONTAINER_ID);
-                    @Cleanup
-                    val iterator = wrapper.asReadOnly().getReader();
-                    DurableDataLog.ReadItem item = iterator.getNext();
-                    while (item != null) {
-                        //System.err.println("READING " + item);
-                        ByteBuffer buffer = ByteBuffer.allocate(Long.BYTES);
-                        byte[] payload = item.getPayload().readAllBytes();
-                        buffer.put(payload);
-                        buffer.flip();
-                        long result = buffer.getLong();
-                        //System.err.println("READING LONG " + result);
-                        if (readSequence.getAndIncrement() != result) {
-                            System.err.println("FOUND DUPLICATE ELEMENT IN LOG!!! " + (readSequence.get() - 1));
-                            duplicateFound.set(true);
-                            Assert.fail();
-                        }
-                        toTruncate = item.getAddress();
-                        item = iterator.getNext();
-                    }
-                    System.err.println("READING LONG " + (readSequence.get() + 1));
-                    if (toTruncate != null) {
-                        log.truncate(toTruncate, TIMEOUT);
-                    }
-                } catch (DurableDataLogException | IOException e) {
-                    e.printStackTrace();
-                }
-            }
-        });
-        writer.join();
     }
 
     /**

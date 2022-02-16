@@ -27,6 +27,7 @@ import io.pravega.common.Exceptions;
 import io.pravega.common.LoggerHelpers;
 import io.pravega.common.Timer;
 import io.pravega.common.concurrent.Futures;
+import io.pravega.common.function.Callbacks;
 import io.pravega.common.tracing.TagLogger;
 import io.pravega.common.util.BufferView;
 import io.pravega.segmentstore.contracts.AttributeId;
@@ -108,7 +109,6 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -224,7 +224,8 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
                     })
                     .exceptionally(ex -> handleException(readSegment.getRequestId(), segment, readSegment.getOffset(), operation,
                                                          wrapCancellationException(ex)))
-                    .thenRun(() -> readPrefetchManager.tryPrefetchData(segmentStore, segment, readSegment));
+                    .thenRun(() -> runPrefetchManagerActionSafely(() -> readPrefetchManager.tryPrefetchData(segmentStore, segment, readSegment),
+                            "Unexpected error trying to prefetch data in ReadPrefetchManager."));
     }
 
     protected boolean verifyToken(String segment, long requestId, String delegationToken, String operation) {
@@ -268,7 +269,8 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
         boolean fromStorage = nonCachedEntry != null && nonCachedEntry.getType() == Storage;
 
         // Keep ReadPrefetchManager informed about results of reads and then return if the request is of type prefetch.
-        this.readPrefetchManager.collectInfoFromUserRead(request, result, fromStorage);
+        runPrefetchManagerActionSafely(() -> this.readPrefetchManager.collectInfoFromUserRead(request, result, fromStorage),
+                "Unexpected error collecting read info in ReadPrefetchManager.");
 
         if (!cachedEntries.isEmpty() || endOfSegment) {
             // We managed to collect some data. Send it.
@@ -317,6 +319,21 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
                     .exceptionally(e -> handleException(request.getRequestId(), segment, nonCachedEntry.getStreamSegmentOffset(), operation,
                                                         wrapCancellationException(e)));
         }
+    }
+
+    /**
+     * Checks that readPrefetchManager is not null and invokes the input function on it safely. Any exception that could
+     * be thrown from running the input action will be logged along with the input error message.
+     *
+     * @param toRun Function to run on readPrefetchManager.
+     * @param errorMessage Customized message to be logged along with any exception thrown running the input action.
+     */
+    private void runPrefetchManagerActionSafely(Runnable toRun, String errorMessage) {
+        Callbacks.invokeSafely(() -> {
+            if (this.readPrefetchManager != null) { // Derived classes may not want to perform read prefetching.
+                toRun.run();
+            }
+        }, ex -> log.error(errorMessage, ex));
     }
 
     /**

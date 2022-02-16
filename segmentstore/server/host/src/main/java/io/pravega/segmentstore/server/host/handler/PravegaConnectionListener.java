@@ -114,6 +114,7 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
      * @param executor           The executor to be used for running token expiration handling tasks.
      * @param tlsProtocolVersion the version of the TLS protocol
      * @param healthServiceManager The healthService to register new health contributors related to the listeners.
+     * @param readPrefetchManager Manager to perform read prefetching on all the request processors that require it.
      */
     public PravegaConnectionListener(boolean enableTls, boolean enableTlsReload, String host, int port, StreamSegmentStore streamSegmentStore, TableStore tableStore,
                                      SegmentStatsRecorder statsRecorder, TableSegmentStatsRecorder tableStatsRecorder,

@@ -212,7 +212,7 @@ public class PravegaConnectionListenerTest {
         PravegaConnectionListener listener = new PravegaConnectionListener(false, false, "localhost",
                 port, mock(StreamSegmentStore.class), mock(TableStore.class), SegmentStatsRecorder.noOp(),
                 TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), null, null, true,
-                NoOpScheduledExecutor.get(), TLS_PROTOCOL_VERSION.getDefaultValue().split(","), healthServiceManager);
+                NoOpScheduledExecutor.get(), TLS_PROTOCOL_VERSION.getDefaultValue().split(","), healthServiceManager, new ReadPrefetchManager());
 
         listener.startListening();
         Health health = listener.getHealthServiceManager().getHealthSnapshot();
