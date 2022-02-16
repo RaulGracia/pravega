@@ -83,7 +83,7 @@ public class AdminRequestProcessorImpl extends PravegaRequestProcessor implement
     public AdminRequestProcessorImpl(@NonNull StreamSegmentStore segmentStore, @NonNull TableStore tableStore, @NonNull TrackedConnection connection,
                                      @NonNull SegmentStatsRecorder statsRecorder, @NonNull TableSegmentStatsRecorder tableStatsRecorder,
                                      @NonNull DelegationTokenVerifier tokenVerifier, boolean replyWithStackTraceOnError) {
-        super(segmentStore, tableStore, connection, statsRecorder, tableStatsRecorder, tokenVerifier, replyWithStackTraceOnError, null);
+        super(segmentStore, tableStore, connection, statsRecorder, tableStatsRecorder, tokenVerifier, replyWithStackTraceOnError, null); // No need for prefetching
     }
 
     //endregion

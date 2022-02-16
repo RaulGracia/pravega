@@ -78,7 +78,7 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
                                      TableStore tableStore, ScheduledExecutorService tokenExpiryExecutor, String[] tlsProtocolVersion) {
         this(enableTls, false, "localhost", port, streamSegmentStore, tableStore,
                 SegmentStatsRecorder.noOp(), TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), null,
-                null, true, tokenExpiryExecutor, tlsProtocolVersion, null, null);
+                null, true, tokenExpiryExecutor, tlsProtocolVersion, null, new ReadPrefetchManager());
     }
 
     /**
@@ -150,12 +150,13 @@ public final class PravegaConnectionListener extends AbstractConnectionListener 
      * @param executor           The executor to be used for running token expiration handling tasks.
      * @param tlsProtocolVersion the version of the TLS protocol
      */
+    @VisibleForTesting
     public PravegaConnectionListener(boolean enableTls, boolean enableTlsReload, String host, int port, StreamSegmentStore streamSegmentStore, TableStore tableStore,
                                      SegmentStatsRecorder statsRecorder, TableSegmentStatsRecorder tableStatsRecorder,
                                      DelegationTokenVerifier tokenVerifier, String certFile, String keyFile,
                                      boolean replyWithStackTraceOnError, ScheduledExecutorService executor, String[] tlsProtocolVersion) {
         this(enableTls, enableTlsReload, host, port, streamSegmentStore, tableStore, statsRecorder, tableStatsRecorder,
-                 tokenVerifier, certFile, keyFile, replyWithStackTraceOnError, executor, tlsProtocolVersion, null, null);
+                 tokenVerifier, certFile, keyFile, replyWithStackTraceOnError, executor, tlsProtocolVersion, null, new ReadPrefetchManager());
     }
 
     @Override
