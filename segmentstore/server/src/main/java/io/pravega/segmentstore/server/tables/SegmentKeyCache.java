@@ -183,6 +183,7 @@ class SegmentKeyCache {
             CacheBucketOffset offset = e.getValue();
             CacheBucketOffset existingOffset = get(e.getKey(), generation);
             if (existingOffset == null || offset.getSegmentOffset() > existingOffset.getSegmentOffset()) {
+                log.info("Actually adding to tail cache: {} {}", e.getKey(), offset);
                 // We have no previous entry, or we do and the current offset is higher, so it prevails.
                 this.tailOffsets.put(e.getKey(), offset);
             }
