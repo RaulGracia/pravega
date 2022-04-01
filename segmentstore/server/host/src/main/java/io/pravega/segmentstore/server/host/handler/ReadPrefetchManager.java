@@ -18,6 +18,7 @@ package io.pravega.segmentstore.server.host.handler;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
+import io.pravega.common.Exceptions;
 import io.pravega.common.MathHelpers;
 import io.pravega.common.concurrent.MultiKeySequentialProcessor;
 import io.pravega.common.util.BufferView;
@@ -145,15 +146,14 @@ public class ReadPrefetchManager implements AutoCloseable {
         this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> buildPrefetchingReadFuture(segmentStore, segment, prefetchId));
     }
 
-    @VisibleForTesting
-    CompletableFuture<Void> buildPrefetchingReadFuture(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, UUID prefetchId) {
+    private CompletableFuture<Void> buildPrefetchingReadFuture(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, UUID prefetchId) {
         return segmentStore.getStreamSegmentInfo(segment, timeout)
                 .thenApply(segmentProperties -> checkPrefetchPreconditions(prefetchId, segmentProperties))
                 .thenApply(segmentProperties -> calculatePrefetchReadLength(prefetchId, segmentProperties))
                 .thenCompose(offsetAndLength -> segmentStore.read(segment, offsetAndLength.getLeft(), offsetAndLength.getRight(), timeout))
                 .handle((prefetchReadResult, ex) -> {
                     if (ex != null) {
-                        if (ex instanceof UnableToPrefetchException || ex instanceof PrefetchNotNeededException) {
+                        if (Exceptions.unwrap(ex) instanceof UnableToPrefetchException || Exceptions.unwrap(ex) instanceof PrefetchNotNeededException) {
                             log.debug("Not prefetching this time.");
                         } else {
                             log.error("Problem while performing a prefetch read.", ex);
@@ -162,10 +162,12 @@ public class ReadPrefetchManager implements AutoCloseable {
                         ImmutablePair<Integer, Boolean> prefetchResultInfo = prefetchReadCallback(prefetchReadResult);
                         // Update the prefetching information for this entry based on the read result.
                         SegmentPrefetchInfo segmentPrefetchInfo = this.prefetchingInfoCache.get(prefetchId);
-                        segmentPrefetchInfo.setPrefetchedDataLength(prefetchResultInfo.getLeft());
-                        segmentPrefetchInfo.setPrefetchStartOffset(prefetchReadResult.getStreamSegmentStartOffset());
-                        segmentPrefetchInfo.setPrefetchEndOffset(prefetchReadResult.getStreamSegmentStartOffset() + prefetchResultInfo.getLeft());
-                        segmentPrefetchInfo.setLastReadFromStorage(prefetchResultInfo.getRight());
+                        if (segmentPrefetchInfo != null) {
+                            segmentPrefetchInfo.setPrefetchedDataLength(prefetchResultInfo.getLeft());
+                            segmentPrefetchInfo.setPrefetchStartOffset(prefetchReadResult.getStreamSegmentStartOffset());
+                            segmentPrefetchInfo.setPrefetchEndOffset(prefetchReadResult.getStreamSegmentStartOffset() + prefetchResultInfo.getLeft());
+                            segmentPrefetchInfo.setLastReadFromStorage(prefetchResultInfo.getRight());
+                        }
                     }
                     return null;
                 });
@@ -199,7 +201,7 @@ public class ReadPrefetchManager implements AutoCloseable {
         // If we know that the reader has a last read result that is either truncated, end of Segment, or at tail, there
         // is nothing to prefetch.
         if (segmentPrefetchInfo == null || !segmentPrefetchInfo.isLastReadFromStorage() || !segmentPrefetchInfo.isSequentialRead()) {
-            throw new CompletionException(new UnableToPrefetchException());
+            throw new CompletionException(new UnableToPrefetchException("Unable to prefetch data."));
         // We need to check if we have enough prefetched data for this Segment and Reader.
         } else if (segmentPrefetchInfo.needsToRefillPrefetchedData(this.prefetchReadLength, this.consumedPrefetchedDataThreshold)) {
             return segmentProperties;
@@ -211,14 +213,19 @@ public class ReadPrefetchManager implements AutoCloseable {
 
     @VisibleForTesting
     ImmutablePair<Long, Integer> calculatePrefetchReadLength(UUID prefetchId, SegmentProperties segmentProperties) {
-        long previousPrefetchEndOffset = this.prefetchingInfoCache.get(prefetchId).getPrefetchEndOffset();
-        long maxAvailableDataToPrefetch = segmentProperties.getLength() - previousPrefetchEndOffset;
-        Preconditions.checkState(maxAvailableDataToPrefetch > 0, "Max available data to prefetch cannot be negative.");
+        SegmentPrefetchInfo entry = this.prefetchingInfoCache.get(prefetchId);
+        if (entry == null || segmentProperties.isDeleted()) {
+            throw new CompletionException(new UnableToPrefetchException("Prefetch entry not found or Segment deleted when attempting to calculate prefetch length."));
+        }
+        long lastUserReadBytePosition = entry.getLastReadOffset() + entry.getLastReadLength();
+        long maxAlreadyReadOffset = Math.max(lastUserReadBytePosition, entry.getPrefetchEndOffset());
+        long maxAvailableDataToPrefetch = segmentProperties.getLength() - maxAlreadyReadOffset;
         int prefetchReadLength = MathHelpers.minMax(this.prefetchReadLength, 0, (int) maxAvailableDataToPrefetch);
-        return new ImmutablePair<>(previousPrefetchEndOffset, prefetchReadLength);
+        return new ImmutablePair<>(maxAlreadyReadOffset, prefetchReadLength);
     }
 
-    private ImmutablePair<Integer, Boolean> prefetchReadCallback(ReadResult prefetchReadResult) {
+    @VisibleForTesting
+    ImmutablePair<Integer, Boolean> prefetchReadCallback(ReadResult prefetchReadResult) {
         int prefetchedDataLength = 0;
         boolean canPrefetch = true;
         try {
@@ -235,6 +242,7 @@ public class ReadPrefetchManager implements AutoCloseable {
                             prefetchedDataLength, entry.getType() == Cache, entry.getType() == Truncated, entry.getType() == EndOfStreamSegment,
                             entry.getType() == Future, entry.getType() == Storage);
                     canPrefetch = false;
+                    break;
                 }
             }
         } catch (Exception ex) {
@@ -327,6 +335,8 @@ public class ReadPrefetchManager implements AutoCloseable {
      * Exception to indicate that prefetching is not possible at this time.
      */
     static class UnableToPrefetchException extends Throwable {
+        public UnableToPrefetchException(String d) {
+        }
     }
 
     /**
