@@ -73,7 +73,7 @@ import static io.pravega.shared.MetricsNames.SLTS_STORAGE_USED_BYTES;
 import static io.pravega.shared.MetricsNames.SLTS_STORAGE_USED_PERCENTAGE;
 import static io.pravega.shared.MetricsNames.STORAGE_METADATA_NUM_CHUNKS;
 import static io.pravega.shared.MetricsNames.STORAGE_METADATA_SIZE;
-import static io.pravega.shared.NameUtils.INTERNAL_SCOPE_PREFIX;
+import static io.pravega.shared.NameUtils.isSegmentInSystemScope;
 
 /**
  * Implements storage for segments using {@link ChunkStorage} and {@link ChunkMetadataStore}.
@@ -457,7 +457,7 @@ public class ChunkedSegmentStorage implements Storage, StatsReporter {
         if (null == handle) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("handle must not be null"));
         }
-        if (isStorageFull() && !isSegmentInSystemScope(handle)) {
+        if (isStorageFull() && !isSegmentInSystemScope(handle.getSegmentName())) {
             return CompletableFuture.failedFuture(new StorageFullException(handle.getSegmentName()));
         }
         return executeSerialized(new WriteOperation(this, handle, offset, data, length), handle.getSegmentName());
@@ -523,7 +523,7 @@ public class ChunkedSegmentStorage implements Storage, StatsReporter {
         if (null == sourceSegment) {
             return CompletableFuture.failedFuture(new IllegalArgumentException("sourceSegment must not be null"));
         }
-        if (isStorageFull() && !isSegmentInSystemScope(targetHandle)) {
+        if (isStorageFull() && !isSegmentInSystemScope(targetHandle.getSegmentName())) {
             return CompletableFuture.failedFuture(new StorageFullException(targetHandle.getSegmentName()));
         }
 
@@ -1015,10 +1015,6 @@ public class ChunkedSegmentStorage implements Storage, StatsReporter {
 
     boolean isStorageFull() {
         return config.isSafeStorageSizeCheckEnabled() && isStorageFull.get();
-    }
-
-    boolean isSegmentInSystemScope(SegmentHandle handle) {
-        return handle.getSegmentName().startsWith(INTERNAL_SCOPE_PREFIX);
     }
 
     private void checkInitialized() {

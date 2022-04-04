@@ -173,11 +173,12 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
      * @param segmentStore The StreamSegmentStore to attach to (and issue requests to).
      * @param tableStore The TableStore to attach to (and issue requests to).
      * @param connection   The ServerConnection to attach to (and send responses to).
+     * @param readPrefetchManager   The ReadPrefetchManager instance that may prefetch user data (or null to disable prefetching).
      */
     @VisibleForTesting
-    public PravegaRequestProcessor(StreamSegmentStore segmentStore, TableStore tableStore, ServerConnection connection) {
+    public PravegaRequestProcessor(StreamSegmentStore segmentStore, TableStore tableStore, ServerConnection connection, ReadPrefetchManager readPrefetchManager) {
         this(segmentStore, tableStore, new TrackedConnection(connection, new ConnectionTracker()), SegmentStatsRecorder.noOp(),
-                TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, new ReadPrefetchManager());
+                TableSegmentStatsRecorder.noOp(), new PassingTokenVerifier(), false, readPrefetchManager);
     }
 
     /**

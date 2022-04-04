@@ -26,6 +26,7 @@ import io.pravega.segmentstore.storage.metadata.ChunkMetadata;
 import io.pravega.segmentstore.storage.metadata.MetadataTransaction;
 import io.pravega.segmentstore.storage.metadata.SegmentMetadata;
 import io.pravega.segmentstore.storage.metadata.StorageMetadataWritesFencedOutException;
+import io.pravega.shared.NameUtils;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 
@@ -224,7 +225,7 @@ class TruncateOperation implements Callable<CompletableFuture<Void>> {
     private boolean shouldRelocate() {
         return chunkedSegmentStorage.getConfig().isRelocateOnTruncateEnabled()
             && chunkedSegmentStorage.shouldAppend()
-            && !chunkedSegmentStorage.isSegmentInSystemScope(handle)
+            && !NameUtils.isSegmentInSystemScope(handle.getSegmentName())
             && currentMetadata.getLength() >  chunkedSegmentStorage.getConfig().getMinSizeForTruncateRelocationInbytes()
             && currentMetadata.getLength() <=  chunkedSegmentStorage.getConfig().getMaxSizeForTruncateRelocationInbytes()
             && getWastedSpacePercentage() >= chunkedSegmentStorage.getConfig().getMinPercentForTruncateRelocation();

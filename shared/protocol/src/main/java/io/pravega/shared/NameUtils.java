@@ -508,7 +508,6 @@ public final class NameUtils {
         return String.format(SYSJOURNAL_NAME_FORMAT, epoch, containerId, currentFileIndex);
     }
 
-
     /**
      * Gets file name of SystemJournal snapshot for given container instance.
      * @param containerId The Id of the Container.
@@ -853,6 +852,16 @@ public final class NameUtils {
      */
     public static String getInternalNameForStream(String streamName) {
         return INTERNAL_NAME_PREFIX + streamName;
+    }
+
+    /**
+     * Returns whether the input Segment belongs to the system scope.
+     *
+     * @param segmentName Name of the Segment.
+     * @return Whether the Segment belongs to system scope.
+     */
+    public static boolean isSegmentInSystemScope(String segmentName) {
+        return segmentName.startsWith(INTERNAL_SCOPE_PREFIX);
     }
 
     /**

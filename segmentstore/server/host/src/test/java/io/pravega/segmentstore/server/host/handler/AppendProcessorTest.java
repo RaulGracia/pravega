@@ -1136,7 +1136,7 @@ public class AppendProcessorTest extends ThreadPooledTestSuite {
         lsh.setRequestProcessor(AppendProcessor.defaultBuilder()
                                                .store(store)
                                                .connection(new TrackedConnection(lsh))
-                                               .nextRequestProcessor(new PravegaRequestProcessor(store, mock(TableStore.class), lsh))
+                                               .nextRequestProcessor(new PravegaRequestProcessor(store, mock(TableStore.class), lsh, new ReadPrefetchManager()))
                                                .build());
         return channel;
     }

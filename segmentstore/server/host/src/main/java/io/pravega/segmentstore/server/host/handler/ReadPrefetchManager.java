@@ -16,7 +16,6 @@
 package io.pravega.segmentstore.server.host.handler;
 
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.pravega.common.Exceptions;
 import io.pravega.common.MathHelpers;
@@ -27,6 +26,7 @@ import io.pravega.segmentstore.contracts.ReadResult;
 import io.pravega.segmentstore.contracts.ReadResultEntry;
 import io.pravega.segmentstore.contracts.SegmentProperties;
 import io.pravega.segmentstore.contracts.StreamSegmentStore;
+import io.pravega.shared.NameUtils;
 import io.pravega.shared.protocol.netty.WireCommands;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -58,8 +58,12 @@ import static io.pravega.segmentstore.contracts.ReadResultEntryType.Truncated;
  * - Issue asynchronous reads for Segments that require prefetching data.
  *
  * An asynchronous prefetch read will be issued for a Segment only if the following conditions apply:
- * - Reads are related to a regular Segment (e.g., not a Table Segment).
- * - The amount of already prefetched data for a Segment is X% lower than
+ * - Reads are related to a regular Segment (e.g., not a Table Segment) that is not system-related (i.e., not in _system scope).
+ * - The Direct Memory cache has space to allow further reads.
+ * - The last user read is sequential with respect with the last tracked one.
+ * - The last user read comes from Storage or, in the case the user read comes from cache (from already prefetched data),
+ * the amount of already prefetched data for a Segment is lower than (1 - {@link ReadPrefetchManagerConfig#CONSUMED_PREFETCHED_DATA_THRESHOLD}) *
+ * {@link ReadPrefetchManagerConfig#PREFETCH_READ_LENGTH}.
  */
 @Slf4j
 public class ReadPrefetchManager implements AutoCloseable {
@@ -111,6 +115,9 @@ public class ReadPrefetchManager implements AutoCloseable {
      * @param fromStorage Whether the read process detected that we fetched data for this Segment from Storage.
      */
     void collectInfoFromUserRead(@NonNull WireCommands.ReadSegment request, @NonNull ReadResult result, boolean fromStorage) {
+        if (isPrefetchingDisallowed(request.getSegment())) {
+            return;
+        }
         // Identifier that combines the Segment and the reader (i.e., connection) to perform prefetching.
         UUID prefetchId = createPrefetchId(request.getSegment(), request.getRequestId());
         // Queue a task to add the info to the prefetchingInfoCache.
@@ -134,16 +141,28 @@ public class ReadPrefetchManager implements AutoCloseable {
      * @param segment Segment to read from.
      * @param request Read request related to the prefetch read to be generated.
      */
-    void tryPrefetchData(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, @NonNull WireCommands.ReadSegment request) {
-        // Direct Memory Cache is full, so we are not doing performing prefetching as there is no room for it.
-        if (!canPrefetch.get()) {
-            log.warn("Not allowed to trigger prefetch reads (system may be under pressure).");
-            return;
+    CompletableFuture<Void> tryPrefetchData(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, @NonNull WireCommands.ReadSegment request) {
+        if (isPrefetchingDisallowed(segment)) {
+            return CompletableFuture.completedFuture(null);
         }
 
         // Now, we need to check if we can issue a prefetch read request for this Segment and Reader.
         final UUID prefetchId = createPrefetchId(segment, request.getRequestId());
-        this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> buildPrefetchingReadFuture(segmentStore, segment, prefetchId));
+        return this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> buildPrefetchingReadFuture(segmentStore, segment, prefetchId));
+    }
+
+    private boolean isPrefetchingDisallowed(String segment) {
+        // We can prefetch only if canPrefetch evaluates to true (i.e., Direct Memory cache has space) and the Segment is not system-related.
+        boolean isPrefetchingDisallowed = !canPrefetch.get() || !isPrefetchableSegmentType(segment);
+        if (!canPrefetch.get()) {
+            // Direct Memory Cache is full, let's warn about it.
+            log.warn("Not allowed to trigger prefetch reads (Direct Memory cache may be under pressure).");
+        }
+        return isPrefetchingDisallowed;
+    }
+
+    private boolean isPrefetchableSegmentType(String segment) {
+        return !NameUtils.isSegmentInSystemScope(segment);
     }
 
     private CompletableFuture<Void> buildPrefetchingReadFuture(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, UUID prefetchId) {
@@ -200,10 +219,11 @@ public class ReadPrefetchManager implements AutoCloseable {
 
         // If we know that the reader has a last read result that is either truncated, end of Segment, or at tail, there
         // is nothing to prefetch.
-        if (segmentPrefetchInfo == null || !segmentPrefetchInfo.isLastReadFromStorage() || !segmentPrefetchInfo.isSequentialRead()) {
+        if (segmentPrefetchInfo == null || !segmentPrefetchInfo.isSequentialRead()) {
             throw new CompletionException(new UnableToPrefetchException("Unable to prefetch data."));
         // We need to check if we have enough prefetched data for this Segment and Reader.
-        } else if (segmentPrefetchInfo.needsToRefillPrefetchedData(this.prefetchReadLength, this.consumedPrefetchedDataThreshold)) {
+        } else if (segmentPrefetchInfo.isLastReadFromStorage()
+                   || segmentPrefetchInfo.needsToRefillPrefetchedData(this.prefetchReadLength, this.consumedPrefetchedDataThreshold)) {
             return segmentProperties;
         }
 
@@ -224,6 +244,12 @@ public class ReadPrefetchManager implements AutoCloseable {
         return new ImmutablePair<>(maxAlreadyReadOffset, prefetchReadLength);
     }
 
+    /**
+     * Does actual reading of the prefetch read, so it can be cached in memory for subsequent user reads.
+     *
+     * @param prefetchReadResult {@link ReadResult} of the prefetch read.
+     * @return ImmutablePair consisting of the read length and whether we should continue prefetching for this Segment and reader.
+     */
     @VisibleForTesting
     ImmutablePair<Integer, Boolean> prefetchReadCallback(ReadResult prefetchReadResult) {
         int prefetchedDataLength = 0;
@@ -232,7 +258,7 @@ public class ReadPrefetchManager implements AutoCloseable {
             while (prefetchReadResult.hasNext()) {
                 ReadResultEntry entry = prefetchReadResult.next();
                 if (entry.getType() == Storage) {
-                    // By reading the entry contents, data should be cached to improve latency of the next read.
+                    // By reading the entry contents, data should be cached to improve latency of the next user reads.
                     BufferView data = entry.getContent().get(timeout.getSeconds(), TimeUnit.SECONDS);
                     prefetchedDataLength += data.getLength();
                     data.release();
@@ -295,9 +321,9 @@ public class ReadPrefetchManager implements AutoCloseable {
         /**
          * Updates the prefetching-related information for this entry.
          *
-         * @param streamSegmentStartOffset
-         * @param maxResultLength
-         * @param fromStorage
+         * @param streamSegmentStartOffset Start offset for last user read on this Segment.
+         * @param maxResultLength Max length of last user read on this Segment.
+         * @param fromStorage Whether the last user read comes from Storage or not.
          */
         void updateInfoFromUserRead(long streamSegmentStartOffset, int maxResultLength, boolean fromStorage) {
             this.sequentialRead = checkSequentialRead(streamSegmentStartOffset);
@@ -326,7 +352,7 @@ public class ReadPrefetchManager implements AutoCloseable {
          * @return Whether the last read from the reader and Segment is sequential.
          */
         boolean checkSequentialRead(long newReadStreamSegmentStartOffset) {
-            return newReadStreamSegmentStartOffset - this.lastReadOffset > 0
+            return newReadStreamSegmentStartOffset - this.lastReadOffset >= 0
                     && newReadStreamSegmentStartOffset - this.lastReadOffset < 4 * 1024 * 1024; // FIXME
         }
     }
@@ -335,7 +361,7 @@ public class ReadPrefetchManager implements AutoCloseable {
      * Exception to indicate that prefetching is not possible at this time.
      */
     static class UnableToPrefetchException extends Throwable {
-        public UnableToPrefetchException(String d) {
+        public UnableToPrefetchException(String d) { //FIXME
         }
     }
 

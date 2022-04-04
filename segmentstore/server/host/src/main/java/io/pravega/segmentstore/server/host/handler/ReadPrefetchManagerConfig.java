@@ -29,7 +29,7 @@ public class ReadPrefetchManagerConfig {
     //region Members
 
     public static final Property<Integer> PREFETCH_READ_LENGTH = Property.named("prefetch.read.length.bytes", 4 * 1024 * 1024);
-    public static final Property<Double> CONSUMED_PREFETCHED_DATA_THRESHOLD = Property.named("consumed.prefetched.data.threshold", 0.75);
+    public static final Property<Double> CONSUMED_PREFETCHED_DATA_THRESHOLD = Property.named("consumed.prefetched.data.threshold", 0.50);
     public static final Property<Integer> TRACKED_ENTRY_MAX_COUNT = Property.named("tracked.entry.count.max", 1000);
     public static final Property<Integer> TRACKED_ENTRY_EVICTION_TIME_SECONDS = Property.named("tracked.entry.eviction.time.seconds", 60);
 

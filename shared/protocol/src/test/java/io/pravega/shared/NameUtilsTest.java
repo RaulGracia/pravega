@@ -218,6 +218,12 @@ public class NameUtilsTest {
         Assert.assertTrue(NameUtils.isTransientSegment(transientSegmentName) && !NameUtils.isTransactionSegment(transientSegmentName));
     }
 
+    @Test
+    public void testIsSegmentInSystemScope() {
+        Assert.assertTrue(NameUtils.isSegmentInSystemScope("_system/some/segment"));
+        Assert.assertFalse(NameUtils.isSegmentInSystemScope("_not/in/_system_scope"));
+    }
+
     private String getSegmentName(String delimiter) {
         return String.format("scope/stream/transactionSegment%s01234567890123456789012345678901", delimiter);
     }

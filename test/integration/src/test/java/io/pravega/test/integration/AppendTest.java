@@ -50,6 +50,7 @@ import io.pravega.segmentstore.contracts.tables.TableStore;
 import io.pravega.segmentstore.server.host.handler.AppendProcessor;
 import io.pravega.segmentstore.server.host.handler.PravegaConnectionListener;
 import io.pravega.segmentstore.server.host.handler.PravegaRequestProcessor;
+import io.pravega.segmentstore.server.host.handler.ReadPrefetchManager;
 import io.pravega.segmentstore.server.host.handler.ServerConnectionInboundHandler;
 import io.pravega.segmentstore.server.host.handler.TrackedConnection;
 import io.pravega.segmentstore.server.store.ServiceBuilder;
@@ -243,7 +244,7 @@ public class AppendTest extends LeakDetectorTestSuite {
         lsh.setRequestProcessor(AppendProcessor.defaultBuilder()
                                                .store(store)
                                                .connection(new TrackedConnection(lsh))
-                                               .nextRequestProcessor(new PravegaRequestProcessor(store, mock(TableStore.class), lsh))
+                                               .nextRequestProcessor(new PravegaRequestProcessor(store, mock(TableStore.class), lsh, new ReadPrefetchManager()))
                                                .build());
         return channel;
     }
