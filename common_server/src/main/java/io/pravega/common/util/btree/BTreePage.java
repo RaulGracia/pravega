@@ -28,6 +28,7 @@ import javax.annotation.concurrent.NotThreadSafe;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import lombok.val;
 
 /**
@@ -53,6 +54,7 @@ import lombok.val;
  *
  */
 @NotThreadSafe
+@Slf4j
 class BTreePage {
     //region Format
 
@@ -333,6 +335,7 @@ class BTreePage {
      * returns null.
      */
     List<BTreePage> splitIfNecessary() {
+        log.info("Split page if necessary.");
         if (this.contents.getLength() <= this.config.getMaxPageSize()) {
             // Nothing to do.
             return null;
@@ -343,6 +346,7 @@ class BTreePage {
         int maxDataLength = (this.config.getMaxPageSize() - this.header.getLength() - this.footer.getLength()) / this.config.entryLength * this.config.entryLength;
         int remainingPageCount = (int) Math.ceil((double) this.data.getLength() / maxDataLength);
 
+        log.info("Split page maxDataLength={} and remainingPageCount={}.", maxDataLength, remainingPageCount);
         ArrayList<BTreePage> result = new ArrayList<>(remainingPageCount);
         int readIndex = 0;
         int remainingItems = getCount();
@@ -363,6 +367,7 @@ class BTreePage {
         }
 
         assert readIndex == this.data.getLength() : "did not copy everything";
+        log.info("Size of result page list after split {}.", result);
         return result;
     }
 
@@ -380,6 +385,7 @@ class BTreePage {
      * @throws IllegalArgumentException   If the entries are not sorted by {@link PageEntry#getKey()}.
      */
     int update(@NonNull List<PageEntry> entries) {
+        log.info("Start updating page.");
         if (entries.isEmpty()) {
             // Nothing to do.
             return 0;
@@ -402,6 +408,7 @@ class BTreePage {
         this.footer = newPage.footer;
         val delta = newPage.count - this.count;
         this.count = newPage.count;
+        log.info("Finish updating page.");
         return delta;
     }
 

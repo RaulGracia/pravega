@@ -63,13 +63,13 @@ abstract class AbstractReadWriteTest extends AbstractSystemTest {
     static final String RK_VALUE_SEPARATOR = ":";
     static final int WRITER_MAX_BACKOFF_MILLIS = 5 * 1000;
     static final int WRITER_MAX_RETRY_ATTEMPTS = 30;
-    static final int NUM_EVENTS_PER_TRANSACTION = 50;
+    static final int NUM_EVENTS_PER_TRANSACTION = 2;
     static final int RK_RENEWAL_RATE_TRANSACTION = NUM_EVENTS_PER_TRANSACTION / 2;
     static final int TRANSACTION_TIMEOUT = 119 * 1000;
     static final int RK_RENEWAL_RATE_WRITER = 500;
     static final int SCALE_WAIT_ITERATIONS = 12;
     private static final int READ_TIMEOUT = 10000;
-    private static final int WRITE_THROTTLING_TIME = 100;
+    private static final int WRITE_THROTTLING_TIME = 10;
 
     final String readerName = "reader";
     ScheduledExecutorService executorService;

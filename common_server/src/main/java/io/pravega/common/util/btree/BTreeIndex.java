@@ -197,17 +197,21 @@ public class BTreeIndex {
         }
 
         TimeoutTimer timer = new TimeoutTimer(timeout);
+        log.info("{}: Initializing.", this.traceObjectId);
         return this.getLength
                 .apply(timer.getRemaining())
                 .thenCompose(indexInfo -> {
+                    log.info("{}: IndexInfo when initializing {}.", this.traceObjectId, indexInfo);
                     if (indexInfo.getIndexLength() <= FOOTER_LENGTH) {
                         // Empty index.
                         setState(indexInfo.getIndexLength(), PagePointer.NO_OFFSET, 0);
+                        log.info("{}: Seems to be a new index while initializing {}.", this.traceObjectId, this.state);
                         this.statistics = this.maintainStatistics ? Statistics.EMPTY : null;
                         return CompletableFuture.completedFuture(null);
                     }
 
                     long footerOffset = indexInfo.getRootPointer() >= 0 ? indexInfo.getRootPointer() : getFooterOffset(indexInfo.getIndexLength());
+                    log.info("{}: footerOffset when initializing {}.", this.traceObjectId, footerOffset);
                     return this.read
                             .apply(footerOffset, FOOTER_LENGTH, false, timer.getRemaining())
                             .thenAcceptAsync(footer -> initialize(footer, footerOffset, indexInfo.getIndexLength()), this.executor)
@@ -303,6 +307,7 @@ public class BTreeIndex {
      * will be completed with the appropriate exception.
      */
     public CompletableFuture<List<ByteArraySegment>> get(@NonNull List<ByteArraySegment> keys, @NonNull Duration timeout) {
+        log.info("{}: Start get on keys {}.", this.traceObjectId, keys.size());
         if (keys.size() == 1) {
             // Shortcut for single key.
             return get(keys.get(0), timeout).thenApply(Collections::singletonList);
@@ -334,6 +339,7 @@ public class BTreeIndex {
         ensureInitialized();
         TimeoutTimer timer = new TimeoutTimer(timeout);
 
+        log.info("{}: Start update on entries {}.", this.traceObjectId, entries.size());
         // Process the Entries in sorted order (by key); this makes the operation more efficient as we can batch-update
         // entries belonging to the same page.
         val toUpdate = entries.stream()
@@ -382,6 +388,7 @@ public class BTreeIndex {
         UpdateablePageCollection pageCollection = new UpdateablePageCollection(this.state.length);
         AtomicReference<PageWrapper> lastPage = new AtomicReference<>(null);
         val lastPageUpdates = new ArrayList<PageEntry>();
+        log.info("{}: Start applying updates.", this.traceObjectId);
         return Futures.loop(
                 updates::hasNext,
                 () -> {
@@ -415,6 +422,7 @@ public class BTreeIndex {
                     if (last != null) {
                         last.setEntryCountDelta(last.getPage().update(lastPageUpdates));
                     }
+                    log.info("{}: Finish applying updates {}.", this.traceObjectId, pageCollection.getCount());
                     return pageCollection;
                 }, this.executor);
     }
@@ -436,6 +444,7 @@ public class BTreeIndex {
         }
 
         long minOffset = calculateMinOffset(pageCollection.getRootPage());
+        log.info("{}: Min offset for updated entries {}.", this.traceObjectId, minOffset);
         return locatePage(
                 page -> getPagePointer(minOffset, page),
                 page -> !page.isIndexPage() || page.getOffset() == minOffset,
@@ -458,6 +467,7 @@ public class BTreeIndex {
      * @param pageCollection An UpdateablePageCollection containing pages to be processed.
      */
     private void processModifiedPages(UpdateablePageCollection pageCollection) {
+        log.info("{}: Processing modified pages {}.", this.traceObjectId, pageCollection.getCount());
         val currentBatch = new ArrayList<PageWrapper>();
         pageCollection.collectLeafPages(currentBatch);
         while (!currentBatch.isEmpty()) {
@@ -496,6 +506,7 @@ public class BTreeIndex {
             currentBatch.clear();
             pageCollection.collectPages(parents, currentBatch);
         }
+        log.info("{}: Finish processing modified pages {}.", this.traceObjectId, pageCollection.getCount());
     }
 
     /**
@@ -522,6 +533,7 @@ public class BTreeIndex {
      * @param context     Processing context.
      */
     private void processSplitPage(List<BTreePage> splitResult, PageModificationContext context) {
+        log.info("{}: Processing split pages {}.", this.traceObjectId, splitResult.size());
         PageWrapper originalPage = context.getPageWrapper();
         for (int i = 0; i < splitResult.size(); i++) {
             val page = splitResult.get(i);
@@ -529,6 +541,7 @@ public class BTreeIndex {
             long newOffset;
             long minOffset;
             PageWrapper processedPage;
+            log.info("{}: Processing split page {}.", this.traceObjectId, i);
             if (i == 0) {
                 // The original page will be replaced by the first split. Nothing changes about its pointer key.
                 originalPage.setPage(page);
@@ -552,6 +565,7 @@ public class BTreeIndex {
             // Record changes.
             context.updatePagePointer(new PagePointer(newPageKey, newOffset, page.getLength(), minOffset));
         }
+        log.info("{}: Finish processing split pages {}.", this.traceObjectId, splitResult.size());
     }
 
     /**
@@ -560,6 +574,7 @@ public class BTreeIndex {
      * @param context Processing context.
      */
     private void processModifiedPage(PageModificationContext context) {
+        log.info("{}: Processing modified pages.", this.traceObjectId);
         PageWrapper page = context.getPageWrapper();
         boolean emptyPage = page.getPage().getCount() == 0;
         ByteArraySegment pageKey = page.getPageKey();
@@ -580,6 +595,7 @@ public class BTreeIndex {
             page.setMinOffset(calculateMinOffset(page));
             context.updatePagePointer(new PagePointer(pageKey, page.getOffset(), page.getPage().getLength(), page.getMinOffset()));
         }
+        log.info("{}: Finish processing modified pages.", this.traceObjectId);
     }
 
     /**
@@ -639,6 +655,7 @@ public class BTreeIndex {
      * @return A CompletableFuture with a PageWrapper for the sought page.
      */
     private CompletableFuture<PageWrapper> locatePage(ByteArraySegment key, PageCollection pageCollection, TimeoutTimer timer) {
+        log.info("{}: Start locating page {}.", this.traceObjectId, key);
         // Verify the sought key has the expected length.
         Preconditions.checkArgument(key.getLength() == this.leafPageConfig.getKeyLength(), "Invalid key length.");
 
@@ -649,6 +666,7 @@ public class BTreeIndex {
 
         if (this.state.rootPageOffset == PagePointer.NO_OFFSET && pageCollection.getCount() == 0) {
             // No data. Return an empty (leaf) page, which will serve as the root for now.
+            log.info("{}: No data locating page {}.", this.traceObjectId, key);
             return CompletableFuture.completedFuture(pageCollection.insert(PageWrapper.wrapNew(createEmptyLeafPage(), null, null)));
         }
 
@@ -677,15 +695,18 @@ public class BTreeIndex {
                         .thenAccept(page -> {
                             if (found.test(page)) {
                                 // We are done.
+                                log.info("{}: Found page {}.", this.traceObjectId, page);
                                 result.complete(page);
                             } else {
                                 PagePointer childPointer = getChildPointer.apply(page.getPage());
                                 pagePointer.set(childPointer);
                                 parentPage.set(page);
+                                log.info("{}: Not found yet, try with child page {}.", this.traceObjectId, page);
                             }
                         }),
                 this.executor)
                 .exceptionally(ex -> {
+                    log.info("{}: Problem locating page {}.", this.traceObjectId, ex);
                     result.completeExceptionally(ex);
                     return null;
                 });

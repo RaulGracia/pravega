@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package io.pravega.test.system;
 
 import io.pravega.client.ClientConfig;
@@ -26,7 +25,7 @@ import io.pravega.client.stream.StreamConfiguration;
 import io.pravega.client.stream.impl.ClientFactoryImpl;
 import io.pravega.client.control.impl.ControllerImpl;
 import io.pravega.client.control.impl.ControllerImplConfig;
-import io.pravega.common.Exceptions;
+import io.pravega.common.Timer;
 import io.pravega.common.concurrent.ExecutorServiceHelpers;
 import io.pravega.common.concurrent.Futures;
 import io.pravega.common.hash.RandomFactory;
@@ -51,19 +50,19 @@ import static org.junit.Assert.assertTrue;
 
 @Slf4j
 @RunWith(SystemTestRunner.class)
-public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests {
+public class SmallTransactionAndFailoverTest extends AbstractFailoverTests {
 
-    private static final int INIT_NUM_WRITERS = 2;
-    private static final int ADD_NUM_WRITERS = 2;
-    private static final int NUM_READERS = 2;
-    private static final int TOTAL_NUM_WRITERS = INIT_NUM_WRITERS + ADD_NUM_WRITERS;
-    //The execution time for @Before + @After + @Test methods should be less than 30 mins. Else the test will timeout.
+    private static final int NUM_WRITERS = 5;
+    private static final int NUM_READERS = 5;
+    private static final String STREAM_NAME = "testMultiReaderWriterTxnStream";
+
+    //The execution time for @Before + @After + @Test methods should be less than 15 mins. Else the test will timeout.
     @Rule
-    public Timeout globalTimeout = Timeout.seconds(30 * 60);
-    private final String scope = "testReadTxnWriteAutoScaleScope" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
-    private final String stream = "testReadTxnWriteAutoScaleStream";
-    private final String readerGroupName = "testReadTxnWriteAutoScaleReaderGroup" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
-    private final ScalingPolicy scalingPolicy = ScalingPolicy.byEventRate(1, 2, 2);
+    public Timeout globalTimeout = Timeout.seconds(24 * 60);
+
+    private final String scope = "testMultiReaderWriterTxnScope" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
+    private final String readerGroupName = "testMultiReaderWriterTxnReaderGroup" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
+    private ScalingPolicy scalingPolicy = ScalingPolicy.fixed(NUM_READERS);
     private final StreamConfiguration config = StreamConfiguration.builder().scalingPolicy(scalingPolicy).build();
     private ClientFactoryImpl clientFactory;
     private ReaderGroupManager readerGroupManager;
@@ -73,13 +72,14 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
     public static void initialize() throws MarathonException, ExecutionException {
         URI zkUri = startZookeeperInstance();
         startBookkeeperInstances(zkUri);
-        URI controllerUri = startPravegaControllerInstances(zkUri, 3);
-        startPravegaSegmentStoreInstances(zkUri, controllerUri, 3);
+        URI controllerUri = startPravegaControllerInstances(zkUri, 1);
+        startPravegaSegmentStoreInstances(zkUri, controllerUri, 1);
     }
 
     @Before
     public void setup() {
-        // Get zk details to verify if controller, segmentstore are running
+
+        // Get zk details to verify if controller, SSS are running
         Service zkService = Utils.createZookeeperService();
         List<URI> zkUris = zkService.getServiceDetails();
         log.debug("Zookeeper service details: {}", zkUris);
@@ -102,23 +102,19 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
         segmentStoreInstance = Utils.createPravegaSegmentStoreService(zkUri, controllerURIDirect);
         assertTrue(segmentStoreInstance.isRunning());
         log.info("Pravega Segmentstore service instance details: {}", segmentStoreInstance.getServiceDetails());
-
-        //num. of readers + num. of writers + 1 to run checkScale operation
-        executorService = ExecutorServiceHelpers.newScheduledThreadPool(NUM_READERS + TOTAL_NUM_WRITERS + 1,
-                "ReadTxnWriteAutoScaleWithFailoverTest-main");
-        controllerExecutorService = ExecutorServiceHelpers.newScheduledThreadPool(2,
-                "ReadTxnWriteAutoScaleWithFailoverTest-controller");
+        //executor service
+        executorService = ExecutorServiceHelpers.newScheduledThreadPool(NUM_READERS + NUM_WRITERS + 2, "MultiReaderTxnWriterWithFailoverTest-main");
+        controllerExecutorService = ExecutorServiceHelpers.newScheduledThreadPool(2, "MultiReaderTxnWriterWithFailoverTest-controller");
         final ClientConfig clientConfig = Utils.buildClientConfig(controllerURIDirect);
         //get Controller Uri
         controller = new ControllerImpl(ControllerImplConfig.builder()
-                                         .clientConfig(clientConfig)
-                                         .maxBackoffMillis(5000).build(),
-                controllerExecutorService);
+                                                            .clientConfig(clientConfig)
+                                                            .maxBackoffMillis(5000).build(), controllerExecutorService);
         testState = new TestState(true);
+        //read and write count variables
         streamManager = new StreamManagerImpl(clientConfig);
-        createScopeAndStream(scope, stream, config, streamManager);
+        createScopeAndStream(scope, STREAM_NAME, config, streamManager);
         log.info("Scope passed to client factory {}", scope);
-
         clientFactory = new ClientFactoryImpl(scope, controller, new SocketConnectionFactoryImpl(clientConfig));
         readerGroupManager = ReaderGroupManager.withScope(scope, clientConfig);
     }
@@ -130,49 +126,34 @@ public class ReadTxnWriteAutoScaleWithFailoverTest extends AbstractFailoverTests
         //interrupt writers and readers threads if they are still running.
         testState.cancelAllPendingWork();
         streamManager.close();
-        clientFactory.close();
+        clientFactory.close(); //close the clientFactory/connectionFactory.
         readerGroupManager.close();
         ExecutorServiceHelpers.shutdown(executorService, controllerExecutorService);
+        testState.txnStatusFutureList.clear();
         //scale the controller and segmentStore back to 1 instance.
         Futures.getAndHandleExceptions(controllerInstance.scaleService(1), ExecutionException::new);
         Futures.getAndHandleExceptions(segmentStoreInstance.scaleService(1), ExecutionException::new);
     }
 
     @Test
-    public void readTxnWriteAutoScaleWithFailoverTest() throws Exception {
-        createWriters(clientFactory, INIT_NUM_WRITERS, scope, stream);
-        createReaders(clientFactory, readerGroupName, scope, readerGroupManager, stream, NUM_READERS);
+    public void multiReaderTxnWriterWithFailOverTest() throws Exception {
+        createWriters(clientFactory, NUM_WRITERS, scope, STREAM_NAME);
+        createReaders(clientFactory, readerGroupName, scope, readerGroupManager, STREAM_NAME, NUM_READERS);
 
-        //run the failover test before scaling
-        performFailoverForTestsInvolvingTxns();
-
-        //bring the instances back to 3 before performing failover during scaling
-        Futures.getAndHandleExceptions(controllerInstance.scaleService(3), ExecutionException::new);
-        Futures.getAndHandleExceptions(segmentStoreInstance.scaleService(3), ExecutionException::new);
-        Exceptions.handleInterrupted(() -> Thread.sleep(WAIT_AFTER_FAILOVER_MILLIS));
-
-        addNewWriters(clientFactory, ADD_NUM_WRITERS, scope, stream);
-
-        //run the failover test while scaling
-        performFailoverForTestsInvolvingTxns();
-
-        waitForScaling(scope, stream, config);
-
-        //bring the instances back to 3 before performing failover
-        Futures.getAndHandleExceptions(controllerInstance.scaleService(3), ExecutionException::new);
-        Futures.getAndHandleExceptions(segmentStoreInstance.scaleService(3), ExecutionException::new);
-        Exceptions.handleInterrupted(() -> Thread.sleep(WAIT_AFTER_FAILOVER_MILLIS));
-
-        //run the failover test after scaling
-        performFailoverForTestsInvolvingTxns();
+        //run the failover test
+        Timer timer = new Timer();
+        while (timer.getElapsed().getSeconds() < (22 * 3600)) {
+            performFailoverForTestsInvolvingTxns();
+        }
 
         stopWriters();
         waitForTxnsToComplete();
         stopReaders();
         validateResults();
 
-        cleanUp(scope, stream, readerGroupManager, readerGroupName); //cleanup if validation is successful.
+        cleanUp(scope, STREAM_NAME, readerGroupManager, readerGroupName); //cleanup if validation is successful.
+
         testState.checkForAnomalies();
-        log.info("Test ReadTxnWriteAutoScaleWithFailover succeeds");
+        log.info("Test MultiReaderWriterTxnWithFailOver succeeds");
     }
 }

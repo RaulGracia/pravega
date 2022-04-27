@@ -192,7 +192,7 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
                         ex -> ex instanceof StreamSegmentNotExistsException,
                         null)
                 .thenComposeAsync(v -> this.index.initialize(timer.getRemaining()), this.executor)
-                .thenRun(() -> log.debug("{}: Initialized.", this.traceObjectId))
+                .thenRun(() -> log.info("{}: Initialized.", this.traceObjectId))
                 .exceptionally(this::handleIndexOperationException);
     }
 
@@ -253,7 +253,7 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
 
         removeFromCache(entries);
         if (entries.size() > 0) {
-            log.debug("{}: Cleared all cache entries ({}).", this.traceObjectId, entries.size());
+            log.info("{}: Cleared all cache entries ({}).", this.traceObjectId, entries.size());
         }
     }
 
@@ -545,7 +545,9 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
     private CompletableFuture<ByteArraySegment> readPage(long offset, int length, boolean cacheResult, Duration timeout) {
         // First, check in the cache.
         byte[] fromCache = getFromCache(offset, length);
+        log.info("{}: Read at offset {} and length {} (cacheRlt={}) .", this.traceObjectId, offset, length, cacheResult);
         if (fromCache != null) {
+            log.info("{}: Read found in cache {} bytes .", this.traceObjectId, fromCache.length);
             return CompletableFuture.completedFuture(new ByteArraySegment(fromCache));
         }
 
@@ -554,9 +556,11 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
         if (handle == null) {
             // Attribute Segment does not exist.
             if (offset == 0 && length == 0) {
+                log.info("{}: Read with null Segment Handle, attribute does not exist .", this.traceObjectId);
                 // Reading 0 bytes at offset 0 is a valid operation (inexistent Attribute Segment is equivalent to an empty one).
                 return CompletableFuture.completedFuture(new ByteArraySegment(new byte[0]));
             } else {
+                log.info("{}: Read with null Segment Handle, apparently reading before the attribute exists.", this.traceObjectId);
                 return Futures.failedFuture(new ArrayIndexOutOfBoundsException(String.format(
                         "Attribute Index Segment has not been created yet. Cannot read %d byte(s) from offset (%d).",
                         length, offset)));
@@ -583,12 +587,14 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
     CompletableFuture<ByteArraySegment> readPageFromStorage(SegmentHandle handle, long offset, int length, boolean cacheResult, Duration timeout) {
         PendingRead pr;
         synchronized (this.pendingReads) {
+            log.info("{}: Read Page from storage {}, offset={}, length={}, cacheResult={}.", this.traceObjectId, handle.getSegmentName(), offset, length, cacheResult);
             pr = this.pendingReads.get(offset);
             if (pr == null) {
                 // Nobody else waiting for this offset. Register ourselves.
                 pr = new PendingRead(offset, length);
                 pr.completion.whenComplete((r, ex) -> unregisterPendingRead(offset));
                 this.pendingReads.put(offset, pr);
+                log.info("{}: Registering pending read {}, offset={}, length={}, cacheResult={}.", this.traceObjectId, handle.getSegmentName(), offset, length, cacheResult);
             } else if (pr.length < length) {
                 // Somehow the previous request wanted to read less than us. This shouldn't be the case, yet it is
                 // a situation we should handle. In his case, we will not be recording the PendingRead.
@@ -596,7 +602,7 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
                 pr = new PendingRead(offset, length);
             } else {
                 // Piggyback on the existing read.
-                log.debug("{}: Concurrent read (Offset={}, Length={}, NewCount={}). Piggybacking.", this.traceObjectId, offset, pr.length, pr.count);
+                log.info("{}: Concurrent read (Offset={}, Length={}, NewCount={}). Piggybacking.", this.traceObjectId, offset, pr.length, pr.count);
                 pr.count.incrementAndGet();
                 return pr.completion;
             }
@@ -611,6 +617,7 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
         Futures.completeAfter(
                 () -> this.storage.read(handle, pr.offset, buffer, 0, pr.length, timeout)
                         .thenApplyAsync(bytesRead -> {
+                            log.info("{}: Bytes read from storage {} for {}.", this.traceObjectId, bytesRead, handle.getSegmentName());
                             Preconditions.checkArgument(pr.length == bytesRead, "Unexpected number of bytes read.");
                             if (cacheResult) {
                                 storeInCache(pr.offset, buffer);
@@ -739,13 +746,14 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
         CacheEntry entry = this.cacheEntries.getOrDefault(entryOffset, null);
         if (entry != null && entry.getSize() == data.getLength()) {
             // Already cached.
+            log.info("{}: Read already cached at offset {}.", this.traceObjectId, entryOffset);
             return;
         }
 
         // All our cache entries are considered "non-essential" since they can always be reloaded from Storage. Do not
         // try to insert/update them into the cache if such traffic is discouraged.
         if (this.cacheDisabled) {
-            log.debug("{}: Cache update skipped for offset {}, length {}. Non-essential cache disabled.",
+            log.info("{}: Cache update skipped for offset {}, length {}. Non-essential cache disabled.",
                     this.traceObjectId, entryOffset, data.getLength());
             return;
         }
@@ -757,9 +765,11 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
         try {
             if (entry != null && entry.isStored()) {
                 // Entry exists. Replace it.
+                log.info("{}: Replacing cached at offset {}.", this.traceObjectId, entryOffset);
                 entryAddress = this.cacheStorage.replace(entry.getCacheAddress(), data);
             } else {
                 // Entry does not exist. Insert it.
+                log.info("{}: Inserting cached at offset {}.", this.traceObjectId, entryOffset);
                 entryAddress = this.cacheStorage.insert(data);
             }
         } catch (CacheFullException cfe) {
@@ -773,8 +783,10 @@ class SegmentAttributeBTreeIndex implements AttributeIndex, CacheManager.Client,
         // Create a new entry wrapper.
         entry = new CacheEntry(entryOffset, data.getLength(), this.currentCacheGeneration, entryAddress);
         if (entry.isStored()) {
+            log.info("{}: Adding entry to cachedEntries {}.", this.traceObjectId, entry.getOffset());
             this.cacheEntries.put(entryOffset, entry);
         } else {
+            log.info("{}: Removing entry from cachedEntries {}.", this.traceObjectId, entry.getOffset());
             // If we were unable to store this entry, remove it from the index.
             this.cacheEntries.remove(entry.getOffset());
         }

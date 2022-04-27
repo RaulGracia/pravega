@@ -44,7 +44,7 @@ abstract class AbstractFailoverTests extends AbstractReadWriteTest {
     static final String SCALE_STREAM = "testReadWriteAndScaleStream";
     //Duration for which the system test waits for writes/reads to happen post failover.
     //10s (SessionTimeout) + 10s (RebalanceContainers) + 20s (For Container recovery + start) + NetworkDelays
-    static final int WAIT_AFTER_FAILOVER_MILLIS = 40 * 1000;
+    static final int WAIT_AFTER_FAILOVER_MILLIS = 300 * 1000;
 
     Service controllerInstance;
     Service segmentStoreInstance;
@@ -112,40 +112,25 @@ abstract class AbstractFailoverTests extends AbstractReadWriteTest {
     }
 
     void performFailoverForTestsInvolvingTxns() throws ExecutionException {
-        log.info("Test with 3 controller, segment store instances running and without a failover scenario");
-        log.info("Read count: {}, write count: {} without any failover",
-                testState.getEventReadCount(), testState.getEventWrittenCount());
-
+        log.info("Read count: {}, write count: {} before failover", testState.getEventReadCount(), testState.getEventWrittenCount());
         //check reads and writes after sleeps
         log.info("Sleeping for {} ", WAIT_AFTER_FAILOVER_MILLIS);
         Exceptions.handleInterrupted(() -> Thread.sleep(WAIT_AFTER_FAILOVER_MILLIS));
-        log.info("Read count: {}, write count: {} without any failover after sleep before scaling",
-                testState.getEventReadCount(), testState.getEventWrittenCount());
+        log.info("Read count: {}, write count: {} without any failover after sleep", testState.getEventReadCount(), testState.getEventWrittenCount());
 
-        //Scale down segment store instances to 2
-        Futures.getAndHandleExceptions(segmentStoreInstance.scaleService(2), ExecutionException::new);
+        //Scale down segment store instances to 0
+        Futures.getAndHandleExceptions(segmentStoreInstance.scaleService(0), ExecutionException::new);
         //zookeeper will take about 30 seconds to detect that the node has gone down
-        Exceptions.handleInterrupted(() -> Thread.sleep(WAIT_AFTER_FAILOVER_MILLIS));
-        log.info("Scaling down Segment Store instances from 3 to 2");
-        log.info("Read count: {}, write count: {} after Segment Store  failover after sleep",
-                testState.getEventReadCount(), testState.getEventWrittenCount());
+        Exceptions.handleInterrupted(() -> Thread.sleep(40 * 1000));
+        log.info("Scaling down Segment Store instances from 1 to 0");
+        log.info("Read count: {}, write count: {} after Segment Store failover after sleep", testState.getEventReadCount(), testState.getEventWrittenCount());
 
-        //Scale down controller instances to 2
-        Futures.getAndHandleExceptions(controllerInstance.scaleService(2), ExecutionException::new);
-        //zookeeper will take about 30 seconds to detect that the node has gone down
-        Exceptions.handleInterrupted(() -> Thread.sleep(WAIT_AFTER_FAILOVER_MILLIS));
-        log.info("Scaling down controller instances from 3 to 2");
-        log.info("Read count: {}, write count: {} after controller failover after sleep",
-                testState.getEventReadCount(), testState.getEventWrittenCount());
-
-        //Scale down segment store, controller to 1 instance each.
+        //Scale up segment store to 1 instance each.
         Futures.getAndHandleExceptions(segmentStoreInstance.scaleService(1), ExecutionException::new);
-        Futures.getAndHandleExceptions(controllerInstance.scaleService(1), ExecutionException::new);
-        //zookeeper will take about 30 seconds to detect that the node has gone down
+        //zookeeper will take about 30 seconds to detect that the node has gone up
         Exceptions.handleInterrupted(() -> Thread.sleep(WAIT_AFTER_FAILOVER_MILLIS));
-        log.info("Scaling down  to 1 controller, 1 Segment Store  instance");
-        log.info("Stop write flag status: {}, stop read flag status: {} ",
-                testState.stopWriteFlag.get(), testState.stopReadFlag.get());
+        log.info("Scaling up to 1 Segment Store instance again");
+        log.info("Stop write flag status: {}, stop read flag status: {} ", testState.stopWriteFlag.get(), testState.stopReadFlag.get());
         log.info("Read count: {}, write count: {} with Segment Store  and controller failover after sleep",
                 testState.getEventReadCount(), testState.getEventWrittenCount());
     }
