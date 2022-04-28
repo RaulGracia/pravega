@@ -128,7 +128,7 @@ public abstract class AbstractService implements Service {
 
         final Map<String, Object> pravegaSpec = ImmutableMap.<String, Object>builder().put("controllerReplicas", controllerCount)
                 .put("segmentStoreReplicas", segmentStoreCount)
-                .put("debugLogging", true)
+                .put("debugLogging", false)
                 .put("cacheVolumeClaimTemplate", pravegaPersistentVolumeSpec)
                 .put("controllerResources", getResources("2000m", "2Gi", "1000m", "2Gi"))
                 .put("segmentStoreResources", getResources("2000m", "6Gi", "1000m", "6Gi"))
