@@ -37,7 +37,7 @@ limitations under the License.
   </appender>                                                                                                                                                                                                                                 
                                                                                                                                                                                                                                               
   <!-- Configure so that it outputs to both console and log file -->                                                                                                                                                                          
-  <root level="DEBUG">                                                                                                                                                                                                                        
+  <root level="INFO">
    <!-- <appender-ref ref="FILE" />        -->                                                                                                                                                                                                       
     <appender-ref ref="STDOUT" />                                                                                                                                                                                                             
   </root>                                                                                                                                                                                                                                     
