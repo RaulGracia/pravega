@@ -58,7 +58,7 @@ public class SmallTransactionAndFailoverTest extends AbstractFailoverTests {
 
     //The execution time for @Before + @After + @Test methods should be less than 15 mins. Else the test will timeout.
     @Rule
-    public Timeout globalTimeout = Timeout.seconds(24 * 3600);
+    public Timeout globalTimeout = Timeout.seconds(5 * 60);
 
     private final String scope = "testMultiReaderWriterTxnScope" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
     private final String readerGroupName = "testMultiReaderWriterTxnReaderGroup" + RandomFactory.create().nextInt(Integer.MAX_VALUE);
@@ -142,7 +142,7 @@ public class SmallTransactionAndFailoverTest extends AbstractFailoverTests {
 
         //run the failover test
         Timer timer = new Timer();
-        while (timer.getElapsed().getSeconds() < (22 * 3600)) {
+        while (timer.getElapsed().getSeconds() < (1 * 60)) {
             performFailoverForTestsInvolvingTxns();
         }
 
