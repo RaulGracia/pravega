@@ -141,7 +141,6 @@ class RecoveryProcessor {
         // Also update metadata along the way.
         try (DataFrameReader<Operation> reader = new DataFrameReader<>(this.durableDataLog, OperationSerializer.DEFAULT, this.metadata.getContainerId())) {
             DataFrameRecord<Operation> dataFrameRecord;
-            reader.getMaxOverlapToCheckForDuplicates().set(MAX_OVERLAP_TO_CHECK_DUPLICATES);
 
             // We can only recover starting from a MetadataCheckpointOperation; find the first one.
             while (true) {
@@ -182,6 +181,15 @@ class RecoveryProcessor {
         metadataUpdater.commitAll();
         LoggerHelpers.traceLeave(log, this.traceObjectId, "recoverAllOperations", traceId, recoveredItemCount);
         return recoveredItemCount;
+    }
+
+    /**
+     * Returns the DataFrameReader instance.
+     * @return the instantiated DataFrameReader
+     * @throws DurableDataLogException If the given log threw an exception while initializing a Reader
+     */
+    protected DataFrameReader<Operation> createDataFrameReader() throws DurableDataLogException {
+       return new DataFrameReader<>(this.durableDataLog, OperationSerializer.DEFAULT, this.metadata.getContainerId(), MAX_OVERLAP_TO_CHECK_DUPLICATES);
     }
 
     protected void recoverOperation(DataFrameRecord<Operation> dataFrameRecord, OperationMetadataUpdater metadataUpdater) throws ServiceHaltException {
