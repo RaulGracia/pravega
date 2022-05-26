@@ -51,7 +51,6 @@ class DataFrameReader<T extends SequencedElement> implements CloseableIterator<D
     private long lastReadSequenceNumber;
     private boolean closed;
     private final String traceObjectId;
-    @Getter (AccessLevel.PACKAGE)
     private final int maxOverlapToCheckForDuplicates;
     private final DuplicateEntryTracker duplicateEntryTracker = new DuplicateEntryTracker();
 
