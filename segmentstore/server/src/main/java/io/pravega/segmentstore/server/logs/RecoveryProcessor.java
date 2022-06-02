@@ -143,7 +143,7 @@ class RecoveryProcessor {
 
         // Read all entries from the DataFrameLog and append them to the InMemoryOperationLog.
         // Also update metadata along the way.
-        try (DataFrameReader<Operation> reader = new DataFrameReader<>(this.durableDataLog, OperationSerializer.DEFAULT, this.metadata.getContainerId())) {
+        try (DataFrameReader<Operation> reader = createDataFrameReader()) {
             DataFrameRecord<Operation> dataFrameRecord;
 
             // We can only recover starting from a MetadataCheckpointOperation; find the first one.
