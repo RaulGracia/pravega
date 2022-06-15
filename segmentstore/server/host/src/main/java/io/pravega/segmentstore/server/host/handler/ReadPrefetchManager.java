@@ -89,7 +89,7 @@ public class ReadPrefetchManager implements AutoCloseable {
 
     //region Constructor
 
-    public ReadPrefetchManager(Supplier<Boolean> canPrefetch, ReadPrefetchManagerConfig config, ExecutorService executorService) {
+    public ReadPrefetchManager(@NonNull Supplier<Boolean> canPrefetch, @NonNull ReadPrefetchManagerConfig config, @NonNull ExecutorService executorService) {
         this.canPrefetch = canPrefetch;
         this.prefetchReadLength = config.getPrefetchReadLength();
         this.consumedPrefetchedDataThreshold = config.getConsumedPrefetchedDataThreshold();
@@ -116,9 +116,10 @@ public class ReadPrefetchManager implements AutoCloseable {
      */
     void collectInfoFromUserRead(@NonNull WireCommands.ReadSegment request, @NonNull ReadResult result, boolean fromStorage) {
         if (isPrefetchingDisallowed(request.getSegment())) {
+            // If prefetch is disallowed, there is no point on gathering information for this Segment.
             return;
         }
-        // Identifier that combines the Segment and the reader (i.e., connection) to perform prefetching.
+        // Identifier that combines the Segment name and the reader (i.e., connection) to perform prefetching.
         UUID prefetchId = createPrefetchId(request.getSegment(), request.getRequestId());
         // Queue a task to add the info to the prefetchingInfoCache.
         this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> CompletableFuture.supplyAsync(() -> {
@@ -143,6 +144,7 @@ public class ReadPrefetchManager implements AutoCloseable {
      */
     CompletableFuture<Void> tryPrefetchData(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, @NonNull WireCommands.ReadSegment request) {
         if (isPrefetchingDisallowed(segment)) {
+            // Prefetching is disallowed, do nothing.
             return CompletableFuture.completedFuture(null);
         }
 
@@ -321,13 +323,13 @@ public class ReadPrefetchManager implements AutoCloseable {
         /**
          * Updates the prefetching-related information for this entry.
          *
-         * @param streamSegmentStartOffset Start offset for last user read on this Segment.
+         * @param readSegmentStartOffset Start offset for last user read on this Segment.
          * @param maxResultLength Max length of last user read on this Segment.
          * @param fromStorage Whether the last user read comes from Storage or not.
          */
-        void updateInfoFromUserRead(long streamSegmentStartOffset, int maxResultLength, boolean fromStorage) {
-            this.sequentialRead = checkSequentialRead(streamSegmentStartOffset);
-            this.lastReadOffset = streamSegmentStartOffset;
+        void updateInfoFromUserRead(long readSegmentStartOffset, int maxResultLength, boolean fromStorage) {
+            this.sequentialRead = checkSequentialRead(readSegmentStartOffset);
+            this.lastReadOffset = readSegmentStartOffset;
             this.lastReadLength = maxResultLength;
             this.lastReadFromStorage = fromStorage;
             this.prefetchedDataLength = this.sequentialRead ? this.prefetchEndOffset - (this.lastReadOffset + this.lastReadLength) : 0L;

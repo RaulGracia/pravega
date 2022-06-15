@@ -63,25 +63,27 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
     @Test
     public void testSegmentPrefetchInfoTriggerPrefetchReadPreconditions() {
-        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(1, 2, false);
+        long startReadOffset = 10 * 1024 * 1024;
+        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(startReadOffset, 20, false);
         // Test isSequentialRead() method. Let's assume that we have prefetched data for a Segment from ranging from
         // offsets 50 and 100. We want to test the notion of "sequential read" from a prefetching perspective.
-        segmentPrefetchInfo.setPrefetchStartOffset(50);
-        segmentPrefetchInfo.setPrefetchEndOffset(100);
+        segmentPrefetchInfo.setPrefetchStartOffset(startReadOffset + 20);
+        segmentPrefetchInfo.setPrefetchEndOffset(startReadOffset + 100);
         // By default, we initialize sequential to true.
         Assert.assertTrue(segmentPrefetchInfo.isSequentialRead());
 
         // If offsets for the last read are way before or after the range of prefetching data, it may mean that the
-        // reader is doing random reads:
-        segmentPrefetchInfo.updateInfoFromUserRead(10, 10, true);
-        Assert.assertFalse(segmentPrefetchInfo.checkSequentialRead(10));
-        segmentPrefetchInfo.updateInfoFromUserRead(5 * 1024 * 1024, 10, true);
-        Assert.assertFalse(segmentPrefetchInfo.isSequentialRead());
+        // reader is doing random reads.
+        Assert.assertFalse(segmentPrefetchInfo.checkSequentialRead(1));
+        Assert.assertFalse(segmentPrefetchInfo.checkSequentialRead(10 * startReadOffset));
+
         // After finding a non-sequential read, the prefetched data is set to 0, so this evaluates to true.
+        segmentPrefetchInfo.updateInfoFromUserRead(1024 * 1024, 10, true);
+        Assert.assertFalse(segmentPrefetchInfo.isSequentialRead());
         Assert.assertTrue(segmentPrefetchInfo.needsToRefillPrefetchedData(40, 0.75));
 
         // However, if the last read is within the expected bounds of a sequential read, the method should output true.
-        segmentPrefetchInfo.updateInfoFromUserRead(6 * 1024 * 1024, 10, true);
+        segmentPrefetchInfo.updateInfoFromUserRead(2 * 1024 * 1024, 10, true);
         Assert.assertTrue(segmentPrefetchInfo.isSequentialRead());
 
         // Now, test whether there is enough prefetched data or not for this reader.

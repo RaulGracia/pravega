@@ -24,6 +24,9 @@ import lombok.Getter;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 
+/**
+ * Configuration class for {@link ReadPrefetchManager}.
+ */
 public class ReadPrefetchManagerConfig {
 
     //region Members
