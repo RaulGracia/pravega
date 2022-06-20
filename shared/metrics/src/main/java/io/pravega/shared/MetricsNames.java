@@ -257,6 +257,10 @@ public final class MetricsNames {
     public static final String OPERATION_COMMIT_MEMORY_LATENCY = PREFIX + "segmentstore.container.operation_commit.memory_latency_ms";       // Per-container Histogram
     public static final String OPERATION_LOG_SIZE = PREFIX + "segmentstore.container.operation.log_size";                                    // Per-container Counter
 
+    // Read prefetching metrics
+    public static final String PREFETCH_READ_LATENCY = PREFIX + "segmentstore.prefetch.read_latency_ms";   // Histogram
+    public static final String PREFETCH_READ_BYTES = PREFIX + "segmentstore.prefetch.read_bytes";          // Counter
+
     // Segment container metadata
     public static final String ACTIVE_SEGMENT_COUNT = PREFIX + "segmentstore.container.active_segments";   // Per-container Gauge
 

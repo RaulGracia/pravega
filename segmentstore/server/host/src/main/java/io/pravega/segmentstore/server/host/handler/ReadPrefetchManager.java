@@ -16,9 +16,11 @@
 package io.pravega.segmentstore.server.host.handler;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import io.pravega.common.Exceptions;
 import io.pravega.common.MathHelpers;
+import io.pravega.common.Timer;
 import io.pravega.common.concurrent.MultiKeySequentialProcessor;
 import io.pravega.common.util.BufferView;
 import io.pravega.common.util.SimpleCache;
@@ -26,6 +28,7 @@ import io.pravega.segmentstore.contracts.ReadResult;
 import io.pravega.segmentstore.contracts.ReadResultEntry;
 import io.pravega.segmentstore.contracts.SegmentProperties;
 import io.pravega.segmentstore.contracts.StreamSegmentStore;
+import io.pravega.segmentstore.server.SegmentStoreMetrics;
 import io.pravega.shared.NameUtils;
 import io.pravega.shared.protocol.netty.WireCommands;
 import lombok.AccessLevel;
@@ -83,6 +86,7 @@ public class ReadPrefetchManager implements AutoCloseable {
     private final double consumedPrefetchedDataThreshold;
     private final MultiKeySequentialProcessor<UUID> readPrefetchProcessor;
     private final ExecutorService executorService;
+    private final SegmentStoreMetrics.ReadPrefetch readPrefetchMetrics;
     private final Duration timeout = Duration.ofSeconds(10);
 
     //endregion
@@ -96,6 +100,7 @@ public class ReadPrefetchManager implements AutoCloseable {
         this.prefetchingInfoCache = new SimpleCache<>(config.getTrackedEntriesMaxCount(), config.getTrackedEntriesEvictionTimeSeconds(),
                 (key, value) -> log.debug("Evicting prefetch key: {}, value: {}", key, value));
         this.readPrefetchProcessor = new MultiKeySequentialProcessor<>(executorService);
+        this.readPrefetchMetrics = new SegmentStoreMetrics.ReadPrefetch();
         this.executorService = executorService;
     }
 
@@ -127,7 +132,7 @@ public class ReadPrefetchManager implements AutoCloseable {
             if (segmentPrefetchInfo == null) {
                 // Initialize the entry for this reader and Segment.
                 this.prefetchingInfoCache.put(prefetchId, new SegmentPrefetchInfo(result.getStreamSegmentStartOffset(),
-                        result.getMaxResultLength(), fromStorage));
+                        result.getMaxResultLength(), fromStorage, this.prefetchReadLength));
             } else {
                 segmentPrefetchInfo.updateInfoFromUserRead(result.getStreamSegmentStartOffset(), result.getMaxResultLength(), fromStorage);
             }
@@ -168,6 +173,7 @@ public class ReadPrefetchManager implements AutoCloseable {
     }
 
     private CompletableFuture<Void> buildPrefetchingReadFuture(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, UUID prefetchId) {
+        Timer prefetchReadLatency = new Timer();
         return segmentStore.getStreamSegmentInfo(segment, timeout)
                 .thenApply(segmentProperties -> checkPrefetchPreconditions(prefetchId, segmentProperties))
                 .thenApply(segmentProperties -> calculatePrefetchReadLength(prefetchId, segmentProperties))
@@ -189,6 +195,9 @@ public class ReadPrefetchManager implements AutoCloseable {
                             segmentPrefetchInfo.setPrefetchEndOffset(prefetchReadResult.getStreamSegmentStartOffset() + prefetchResultInfo.getLeft());
                             segmentPrefetchInfo.setLastReadFromStorage(prefetchResultInfo.getRight());
                         }
+                        // Report metrics after a successful prefetch read.
+                        this.readPrefetchMetrics.reportPrefetchDataRead(prefetchResultInfo.getLeft());
+                        this.readPrefetchMetrics.reportPrefetchDataReadLatency(prefetchReadLatency.getElapsedMillis());
                     }
                     return null;
                 });
@@ -241,8 +250,12 @@ public class ReadPrefetchManager implements AutoCloseable {
         }
         long lastUserReadBytePosition = entry.getLastReadOffset() + entry.getLastReadLength();
         long maxAlreadyReadOffset = Math.max(lastUserReadBytePosition, entry.getPrefetchEndOffset());
-        long maxAvailableDataToPrefetch = segmentProperties.getLength() - maxAlreadyReadOffset;
+        long maxAvailableDataToPrefetch = Math.max(0, segmentProperties.getLength() - maxAlreadyReadOffset);
         int prefetchReadLength = MathHelpers.minMax(this.prefetchReadLength, 0, (int) maxAvailableDataToPrefetch);
+        if (prefetchReadLength <= 0) {
+            log.warn("Negative prefetch read length calculated for segment {}, with stored info {}.", segmentProperties, entry);
+            throw new CompletionException(new UnableToPrefetchException("Not possible to issue prefetch read."));
+        }
         return new ImmutablePair<>(maxAlreadyReadOffset, prefetchReadLength);
     }
 
@@ -285,6 +298,7 @@ public class ReadPrefetchManager implements AutoCloseable {
     public void close() throws Exception {
         this.readPrefetchProcessor.close();
         this.prefetchingInfoCache.cleanUp();
+        this.readPrefetchMetrics.close();
     }
 
     //endregion
@@ -306,14 +320,16 @@ public class ReadPrefetchManager implements AutoCloseable {
         private volatile boolean sequentialRead;
 
         // Prefetching info for this entry.
+        private final int maxPrefetchReadLength;
         private volatile long prefetchStartOffset;
         private volatile long prefetchEndOffset;
         private volatile long prefetchedDataLength;
 
-        SegmentPrefetchInfo(long lastReadOffset, int lastReadLength, boolean fromStorage) {
+        SegmentPrefetchInfo(long lastReadOffset, int lastReadLength, boolean fromStorage, int maxPrefetchReadLength) {
             this.lastReadOffset = lastReadOffset;
             this.lastReadLength = lastReadLength;
             this.lastReadFromStorage = fromStorage;
+            this.maxPrefetchReadLength = maxPrefetchReadLength;
             this.sequentialRead = true; // Let's be optimistic by default.
             this.prefetchStartOffset = 0;
             this.prefetchEndOffset = 0;
@@ -332,7 +348,11 @@ public class ReadPrefetchManager implements AutoCloseable {
             this.lastReadOffset = readSegmentStartOffset;
             this.lastReadLength = maxResultLength;
             this.lastReadFromStorage = fromStorage;
-            this.prefetchedDataLength = this.sequentialRead ? this.prefetchEndOffset - (this.lastReadOffset + this.lastReadLength) : 0L;
+            this.prefetchedDataLength = 0;
+            if (this.sequentialRead) {
+                this.prefetchedDataLength = Math.max(this.prefetchEndOffset - (this.lastReadOffset + this.lastReadLength), 0);
+            }
+            Preconditions.checkState(this.prefetchedDataLength >= 0, "Prefetch data length cannot be negative.");
         }
 
         /**
@@ -355,7 +375,7 @@ public class ReadPrefetchManager implements AutoCloseable {
          */
         boolean checkSequentialRead(long newReadStreamSegmentStartOffset) {
             return newReadStreamSegmentStartOffset - this.lastReadOffset >= 0
-                    && newReadStreamSegmentStartOffset - this.lastReadOffset < 4 * 1024 * 1024; // FIXME
+                    && newReadStreamSegmentStartOffset - this.lastReadOffset < this.maxPrefetchReadLength;
         }
     }
 

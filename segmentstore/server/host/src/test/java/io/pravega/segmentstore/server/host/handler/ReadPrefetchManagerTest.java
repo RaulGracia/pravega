@@ -23,12 +23,18 @@ import io.pravega.segmentstore.contracts.ReadResultEntryType;
 import io.pravega.segmentstore.contracts.SegmentProperties;
 import io.pravega.segmentstore.contracts.StreamSegmentInformation;
 import io.pravega.segmentstore.contracts.StreamSegmentStore;
+import io.pravega.segmentstore.server.SegmentStoreMetrics;
 import io.pravega.segmentstore.server.reading.CompletableReadResultEntry;
 import io.pravega.segmentstore.server.reading.StreamSegmentReadResult;
+import io.pravega.shared.MetricsNames;
+import io.pravega.shared.metrics.MetricRegistryUtils;
+import io.pravega.shared.metrics.MetricsConfig;
+import io.pravega.shared.metrics.MetricsProvider;
 import io.pravega.shared.protocol.netty.WireCommands;
 import io.pravega.test.common.AssertExtensions;
 import io.pravega.test.common.ThreadPooledTestSuite;
 import lombok.Cleanup;
+import lombok.val;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.Assert;
 import org.junit.Test;
@@ -37,6 +43,7 @@ import org.mockito.Mockito;
 import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
@@ -50,7 +57,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
     @Test
     public void testSegmentPrefetchInfo() {
-        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(1, 2, false);
+        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(1, 2, false, 4 * 1024 * 1024);
         Assert.assertFalse(segmentPrefetchInfo.isLastReadFromStorage());
         Assert.assertEquals(1, segmentPrefetchInfo.getLastReadOffset());
         Assert.assertEquals(2, segmentPrefetchInfo.getLastReadLength());
@@ -64,7 +71,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
     @Test
     public void testSegmentPrefetchInfoTriggerPrefetchReadPreconditions() {
         long startReadOffset = 10 * 1024 * 1024;
-        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(startReadOffset, 20, false);
+        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(startReadOffset, 20, false, 4 * 1024 * 1024);
         // Test isSequentialRead() method. Let's assume that we have prefetched data for a Segment from ranging from
         // offsets 50 and 100. We want to test the notion of "sequential read" from a prefetching perspective.
         segmentPrefetchInfo.setPrefetchStartOffset(startReadOffset + 20);
@@ -284,6 +291,21 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Mockito.when(readResult.next()).thenReturn(readResultEntry);
         when(store.read(anyString(), anyLong(), anyInt(), Mockito.any(Duration.class))).thenReturn(CompletableFuture.completedFuture(readResult));
         readPrefetchManager.tryPrefetchData(store, segmentName, request).join();
+    }
+
+    @Test
+    public void testReadPrefetchManagerMetrics() throws Exception {
+        MetricsProvider.initialize(MetricsConfig.builder()
+                .with(MetricsConfig.ENABLE_STATISTICS, true)
+                .build());
+        MetricsProvider.getMetricsProvider().startWithoutExporting();
+        @Cleanup
+        val metrics = new SegmentStoreMetrics.ReadPrefetch();
+        metrics.reportPrefetchDataRead(100);
+        AssertExtensions.assertEventuallyEquals(true, () -> MetricRegistryUtils.getCounter(MetricsNames.PREFETCH_READ_BYTES).count() == 100, 2000);
+        metrics.reportPrefetchDataReadLatency(1000);
+        AssertExtensions.assertEventuallyEquals(true, () -> MetricRegistryUtils.getTimer(MetricsNames.PREFETCH_READ_LATENCY).mean(TimeUnit.MILLISECONDS) == 1000, 2000);
+        MetricsProvider.getMetricsProvider().close();
     }
 
     static class MockNextEntrySupplier implements StreamSegmentReadResult.NextEntrySupplier {

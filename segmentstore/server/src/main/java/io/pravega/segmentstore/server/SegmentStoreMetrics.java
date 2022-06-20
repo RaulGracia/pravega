@@ -294,6 +294,37 @@ public final class SegmentStoreMetrics {
 
     //endregion
 
+    //region Read Prefetch
+
+    /**
+     * Read Prefetch metrics.
+     */
+    public final static class ReadPrefetch implements AutoCloseable {
+        private final OpStatsLogger readPrefetchLatency;
+        private final Counter readBytes;
+
+        public ReadPrefetch() {
+            this.readPrefetchLatency = STATS_LOGGER.createStats(MetricsNames.PREFETCH_READ_LATENCY);
+            this.readBytes = STATS_LOGGER.createCounter(MetricsNames.PREFETCH_READ_BYTES);
+        }
+
+        public void reportPrefetchDataRead(long bytesRead) {
+            this.readBytes.add(bytesRead);
+        }
+
+        public void reportPrefetchDataReadLatency(long latencyInMillis) {
+            this.readPrefetchLatency.reportSuccessValue(latencyInMillis);
+        }
+
+        @Override
+        public void close() throws Exception {
+            this.readBytes.close();
+            this.readPrefetchLatency.close();
+        }
+    }
+
+    //endregion
+
     //region Metadata
 
     /**
