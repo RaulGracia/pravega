@@ -860,6 +860,12 @@ class BookKeeperLog implements DurableDataLog {
 
     @VisibleForTesting
     protected Stat updateZkMetadata(byte[] serializedMetadata, int version) throws Exception {
+        try {
+            LogMetadata logMetadata = loadMetadata();
+            log.info("{}: Existing metadata in Zookeeper before update {}.", this.traceObjectId, logMetadata);
+        } catch (Exception e) {
+            log.warn("{}: Problem retrieving data from Zookeeper.", this.traceObjectId, e);
+        }
         return this.zkClient.setData().withVersion(version).forPath(this.logNodePath, serializedMetadata);
     }
 
