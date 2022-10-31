@@ -57,13 +57,13 @@ import static io.pravega.segmentstore.contracts.ReadResultEntryType.Truncated;
 /**
  * This class is responsible for issuing asynchronous prefetch reads based on incoming reads to regular Segments. It
  * does two main tasks:
- * - Keep track of current Segments being read as well as their prefetched data, if any.
- * - Issue asynchronous reads for Segments that require prefetching data.
+ * - To keep track of current Segments being read as well as their prefetched data, if any.
+ * - Trigger asynchronous reads for Segments that require prefetching data.
  *
- * An asynchronous prefetch read will be issued for a Segment only if the following conditions apply:
+ * An asynchronous prefetch read will be triggered for a Segment only if the following conditions apply:
  * - Reads are related to a regular Segment (e.g., not a Table Segment) that is not system-related (i.e., not in _system scope).
  * - The Direct Memory cache has space to allow further reads.
- * - The last user read is sequential with respect with the last tracked one.
+ * - The current user read is sequential with respect with the last tracked one.
  * - The last user read comes from Storage or, in the case the user read comes from cache (from already prefetched data),
  * the amount of already prefetched data for a Segment is lower than (1 - {@link ReadPrefetchManagerConfig#CONSUMED_PREFETCHED_DATA_THRESHOLD}) *
  * {@link ReadPrefetchManagerConfig#PREFETCH_READ_LENGTH}.
@@ -74,7 +74,7 @@ public class ReadPrefetchManager implements AutoCloseable {
 
     @Getter(AccessLevel.PACKAGE)
     @VisibleForTesting
-    private final Supplier<Boolean> canPrefetch;
+    private final Supplier<Boolean> cacheFull;
     @Getter(AccessLevel.PACKAGE)
     @VisibleForTesting
     private final SimpleCache<UUID, SegmentPrefetchInfo> prefetchingInfoCache;
@@ -93,8 +93,8 @@ public class ReadPrefetchManager implements AutoCloseable {
 
     //region Constructor
 
-    public ReadPrefetchManager(@NonNull Supplier<Boolean> canPrefetch, @NonNull ReadPrefetchManagerConfig config, @NonNull ExecutorService executorService) {
-        this.canPrefetch = canPrefetch;
+    public ReadPrefetchManager(@NonNull Supplier<Boolean> cacheFull, @NonNull ReadPrefetchManagerConfig config, @NonNull ExecutorService executorService) {
+        this.cacheFull = cacheFull;
         this.prefetchReadLength = config.getPrefetchReadLength();
         this.consumedPrefetchedDataThreshold = config.getConsumedPrefetchedDataThreshold();
         this.prefetchingInfoCache = new SimpleCache<>(config.getTrackedEntriesMaxCount(), config.getTrackedEntriesEvictionTimeSeconds(),
@@ -112,7 +112,7 @@ public class ReadPrefetchManager implements AutoCloseable {
     //endregion
 
     /**
-     * Collect information from external reads on a Segment. This information will help us to decide whether to issue
+     * Collect information from external reads on a Segment. This information will help us to decide whether to trigger
      * prefetch reads or not.
      *
      * @param request Read request sent from the client.
@@ -153,15 +153,15 @@ public class ReadPrefetchManager implements AutoCloseable {
             return CompletableFuture.completedFuture(null);
         }
 
-        // Now, we need to check if we can issue a prefetch read request for this Segment and Reader.
+        // Now, we need to check if we can trigger a prefetch read request for this Segment and Reader.
         final UUID prefetchId = createPrefetchId(segment, request.getRequestId());
         return this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> buildPrefetchingReadFuture(segmentStore, segment, prefetchId));
     }
 
     private boolean isPrefetchingDisallowed(String segment) {
         // We can prefetch only if canPrefetch evaluates to true (i.e., Direct Memory cache has space) and the Segment is not system-related.
-        boolean isPrefetchingDisallowed = !canPrefetch.get() || !isPrefetchableSegmentType(segment);
-        if (!canPrefetch.get()) {
+        boolean isPrefetchingDisallowed = cacheFull.get() || !isPrefetchableSegmentType(segment);
+        if (cacheFull.get()) {
             // Direct Memory Cache is full, let's warn about it.
             log.warn("Not allowed to trigger prefetch reads (Direct Memory cache may be under pressure).");
         }
@@ -369,7 +369,7 @@ public class ReadPrefetchManager implements AutoCloseable {
 
         /**
          * Returns whether the last read follows the expected pattern of a sequential read or not. If we detect that the
-         * last read does not follow the expected pattern, further prefetch reads may not be issued.
+         * last read does not follow the expected pattern, further prefetch reads may not be triggered.
          *
          * @return Whether the last read from the reader and Segment is sequential.
          */

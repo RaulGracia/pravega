@@ -121,9 +121,9 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Assert.assertEquals(123, readPrefetchManager.getPrefetchReadLength());
         Assert.assertEquals(0.5, readPrefetchManager.getConsumedPrefetchedDataThreshold(), 0.0);
         Assert.assertEquals(100, readPrefetchManager.getPrefetchingInfoCache().getMaxSize());
-        Assert.assertTrue(readPrefetchManager.getCanPrefetch().get());
+        Assert.assertTrue(readPrefetchManager.getCacheFull().get());
         canPrefetch.set(false);
-        Assert.assertFalse(readPrefetchManager.getCanPrefetch().get());
+        Assert.assertFalse(readPrefetchManager.getCacheFull().get());
         WireCommands.ReadSegment request = new WireCommands.ReadSegment("segment", 0, 100, "", 0);
         // Check that we cannot prefetch data if canPrefetchSupplier returns false.
         Assert.assertNull(readPrefetchManager.tryPrefetchData(Mockito.mock(StreamSegmentStore.class), "segment", request).join());
