@@ -160,12 +160,16 @@ public class ReadPrefetchManager implements AutoCloseable {
 
     private boolean isPrefetchingDisallowed(String segment) {
         // We can prefetch only if canPrefetch evaluates to true (i.e., Direct Memory cache has space) and the Segment is not system-related.
-        boolean isPrefetchingDisallowed = cacheFull.get() || !isPrefetchableSegmentType(segment);
-        if (cacheFull.get()) {
+        boolean isCacheFull = cacheFull.get();
+        if (isCacheFull) {
             // Direct Memory Cache is full, let's warn about it.
             log.warn("Not allowed to trigger prefetch reads (Direct Memory cache may be under pressure).");
         }
-        return isPrefetchingDisallowed;
+        boolean isPrefetchableSegmentType = isPrefetchableSegmentType(segment);
+        if (isPrefetchableSegmentType) {
+            log.debug("Not allowed to trigger prefetch reads for Internal Segments: {}.", segment);
+        }
+        return isCacheFull || !isPrefetchableSegmentType;
     }
 
     private boolean isPrefetchableSegmentType(String segment) {

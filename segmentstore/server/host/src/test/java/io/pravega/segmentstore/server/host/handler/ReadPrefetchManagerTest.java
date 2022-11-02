@@ -108,8 +108,8 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
     @Test
     public void testReadPrefetchManagerConstructor() throws Exception {
-        AtomicBoolean canPrefetch = new AtomicBoolean(true);
-        Supplier<Boolean> canPrefetchSupplier = canPrefetch::get;
+        AtomicBoolean isCacheFull = new AtomicBoolean(false);
+        Supplier<Boolean> canPrefetchSupplier = isCacheFull::get;
         ReadPrefetchManagerConfig readPrefetchManagerConfig = ReadPrefetchManagerConfig.builder()
                 .with(ReadPrefetchManagerConfig.PREFETCH_READ_LENGTH, 123)
                 .with(ReadPrefetchManagerConfig.CONSUMED_PREFETCHED_DATA_THRESHOLD, 0.5)
@@ -121,9 +121,9 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Assert.assertEquals(123, readPrefetchManager.getPrefetchReadLength());
         Assert.assertEquals(0.5, readPrefetchManager.getConsumedPrefetchedDataThreshold(), 0.0);
         Assert.assertEquals(100, readPrefetchManager.getPrefetchingInfoCache().getMaxSize());
-        Assert.assertTrue(readPrefetchManager.getCacheFull().get());
-        canPrefetch.set(false);
         Assert.assertFalse(readPrefetchManager.getCacheFull().get());
+        isCacheFull.set(true);
+        Assert.assertTrue(readPrefetchManager.getCacheFull().get());
         WireCommands.ReadSegment request = new WireCommands.ReadSegment("segment", 0, 100, "", 0);
         // Check that we cannot prefetch data if canPrefetchSupplier returns false.
         Assert.assertNull(readPrefetchManager.tryPrefetchData(Mockito.mock(StreamSegmentStore.class), "segment", request).join());
@@ -131,7 +131,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
     @Test
     public void testCollectInfoFromUser() throws Exception {
-        Supplier<Boolean> canPrefetchSupplier = () -> true;
+        Supplier<Boolean> canPrefetchSupplier = () -> false;
         ReadPrefetchManagerConfig readPrefetchManagerConfig = ReadPrefetchManagerConfig.builder().build();
         @Cleanup
         ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(canPrefetchSupplier, readPrefetchManagerConfig, this.executorService());
@@ -155,7 +155,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
     @Test
     public void testCheckPrefetchPreconditions() throws Exception {
-        Supplier<Boolean> canPrefetchSupplier = () -> true;
+        Supplier<Boolean> canPrefetchSupplier = () -> false;
         ReadPrefetchManagerConfig readPrefetchManagerConfig = ReadPrefetchManagerConfig.builder().build();
         @Cleanup
         ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(canPrefetchSupplier, readPrefetchManagerConfig, this.executorService());
@@ -195,7 +195,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
     @Test
     public void testCalculatePrefetchLength() throws Exception {
-        Supplier<Boolean> canPrefetchSupplier = () -> true;
+        Supplier<Boolean> canPrefetchSupplier = () -> false;
         ReadPrefetchManagerConfig readPrefetchManagerConfig = ReadPrefetchManagerConfig.builder().build();
         @Cleanup
         ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(canPrefetchSupplier, readPrefetchManagerConfig, this.executorService());
