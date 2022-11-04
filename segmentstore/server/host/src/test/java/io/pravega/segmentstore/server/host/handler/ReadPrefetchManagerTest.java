@@ -92,7 +92,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Assert.assertFalse(segmentPrefetchInfo.checkSequentialRead(1));
         Assert.assertFalse(segmentPrefetchInfo.checkSequentialRead(10 * startReadOffset));
 
-        // Reads withing lastReadOffset to lastReadOffset + prefetchReadLength are considered sequential.
+        // Reads within lastReadOffset to lastReadOffset + prefetchReadLength are considered sequential.
         Assert.assertTrue(segmentPrefetchInfo.checkSequentialRead(startReadOffset));
         Assert.assertTrue(segmentPrefetchInfo.checkSequentialRead(startReadOffset + prefetchReadLength - 1));
 

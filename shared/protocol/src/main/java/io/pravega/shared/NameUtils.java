@@ -35,6 +35,8 @@ public final class NameUtils {
     // The prefix which will be used to name all internal streams.
     public static final String INTERNAL_NAME_PREFIX = "_";
 
+    public static final String NAME_SEPARATOR = "/";
+
     // The separator in controller metadata tables.
     public static final String SEPARATOR = ".#.";
 
@@ -42,7 +44,7 @@ public final class NameUtils {
     public static final String INTERNAL_SCOPE_NAME = "_system";
 
     // The Prefix which is used when creating internally used pravega streams.
-    public static final String INTERNAL_SCOPE_PREFIX = INTERNAL_SCOPE_NAME + "/";
+    public static final String INTERNAL_SCOPE_PREFIX = INTERNAL_SCOPE_NAME + NAME_SEPARATOR;
 
     // The prefix used for internal container segments.
     public static final String INTERNAL_CONTAINER_PREFIX = "_system/containers/";
@@ -626,7 +628,7 @@ public final class NameUtils {
      * @throws IllegalStateException If 'scopedName' is not in the form 'scope/name`.
      */
     public static List<String> extractScopedNameTokens(String scopedName) {
-        String[] tokens = scopedName.split("/");
+        String[] tokens = scopedName.split(NAME_SEPARATOR);
         Preconditions.checkArgument(tokens.length == 2, "Unexpected format for '%s'. Expected format '<scope-name>/<name>'.", scopedName);
         return Arrays.asList(tokens);
     }
@@ -665,7 +667,7 @@ public final class NameUtils {
         String originalSegmentName = isTransactionSegment(qualifiedName) ? getParentStreamSegmentName(qualifiedName) : qualifiedName;
 
         List<String> retVal = new LinkedList<>();
-        String[] tokens = originalSegmentName.split("/");
+        String[] tokens = originalSegmentName.split(NAME_SEPARATOR);
         int segmentIdIndex = tokens.length == 2 ? 1 : 2;
         long segmentId;
         if (tokens[segmentIdIndex].contains(EPOCH_DELIMITER)) {
@@ -726,7 +728,7 @@ public final class NameUtils {
     public static List<String> extractTableSegmentTokens(String qualifiedName) {
         Preconditions.checkNotNull(qualifiedName);
         List<String> retVal = new LinkedList<>();
-        String[] tokens = qualifiedName.split("/");
+        String[] tokens = qualifiedName.split(NAME_SEPARATOR);
         Preconditions.checkArgument(tokens.length > 2);
         Preconditions.checkArgument(tokens[1].equals(TABLES));
         // add scope
@@ -745,7 +747,7 @@ public final class NameUtils {
      */
     public static boolean isTableSegment(String qualifiedName) {
         Preconditions.checkNotNull(qualifiedName);
-        String[] tokens = qualifiedName.split("/");
+        String[] tokens = qualifiedName.split(NAME_SEPARATOR);
         Preconditions.checkArgument(tokens.length > 2);
 
         return tokens[1].equals(TABLES);
@@ -784,7 +786,7 @@ public final class NameUtils {
 
     private static String[] updateSegmentTags(String qualifiedSegmentName, String[] tags) {
         String segmentBaseName = getSegmentBaseName(qualifiedSegmentName);
-        String[] tokens = segmentBaseName.split("/");
+        String[] tokens = segmentBaseName.split(NAME_SEPARATOR);
 
         int segmentIdIndex = (tokens.length == 1) ? 0 : (tokens.length) == 2 ? 1 : 2;
         if (tokens[segmentIdIndex].contains(EPOCH_DELIMITER)) {
@@ -862,6 +864,10 @@ public final class NameUtils {
      */
     public static boolean isSegmentInSystemScope(String segmentName) {
         return segmentName.startsWith(INTERNAL_SCOPE_PREFIX);
+    }
+    
+    public static boolean isInternalSegment(String segmentName) {
+        return segmentName.charAt(segmentName.indexOf(NAME_SEPARATOR) + 1) == '_';
     }
 
     /**

@@ -65,6 +65,10 @@ import static io.pravega.segmentstore.contracts.ReadResultEntryType.Storage;
  * - The last user read comes from Storage or, in the case the user read comes from cache (e.g., from already prefetched data),
  * the last prefetch read (if any) has read data from storage and the reader is reading an offset &gt= than the offset at
  * which the last prefetch read started.
+ *
+ * If a prefetch read hits a non-Storage entry while reading (e.g., cached entry, future, end of Segment), further
+ * prefetch reads for that Segment and Reader will be discarded. Only the Reader hitting again a Storage read on the same
+ * Segment will resume again prefetch reads for that Segment and Reader.
  */
 @Slf4j
 public final class ReadPrefetchManager implements AutoCloseable {
@@ -114,7 +118,7 @@ public final class ReadPrefetchManager implements AutoCloseable {
      * @param fromStorage Whether the read process detected that we fetched data for this Segment from Storage.
      */
     void collectInfoFromUserRead(@NonNull WireCommands.ReadSegment request, @NonNull ReadResult result, boolean fromStorage) {
-        if (isPrefetchingDisallowed()) {
+        if (isPrefetchingDisallowed(request.getSegment())) {
             // If prefetch is disallowed, there is no point on gathering information for this Segment.
             return;
         }
@@ -126,13 +130,11 @@ public final class ReadPrefetchManager implements AutoCloseable {
         this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> CompletableFuture.supplyAsync(() -> {
             SegmentPrefetchInfo segmentPrefetchInfo = this.prefetchingInfoCache.get(prefetchId);
             if (segmentPrefetchInfo == null) {
-                SegmentPrefetchInfo info = isPrefetchableSegmentType(request.getSegment()) ?
-                        new SegmentPrefetchInfo(result.getStreamSegmentStartOffset(), result.getMaxResultLength(), fromStorage, this.prefetchReadLength) :
-                        SegmentPrefetchInfo.getNonPrefetchableSegmentInfo();
+                SegmentPrefetchInfo info = new SegmentPrefetchInfo(result.getStreamSegmentStartOffset(), result.getMaxResultLength(), fromStorage, this.prefetchReadLength);
                 log.info("PrefetchId[{}]: Adding new entry: {}", prefetchId, info);
                 // Initialize the entry for this reader and Segment.
                 this.prefetchingInfoCache.put(prefetchId, info);
-            } else if (segmentPrefetchInfo.isPrefetchableSegment()) {
+            } else {
                 log.info("PrefetchId[{}]: UPDATING entry: startOffset = {}, consumedLength = {}, fromStorage = {}", prefetchId,
                         result.getStreamSegmentStartOffset(), result.getConsumedLength(), fromStorage);
                 segmentPrefetchInfo.updateInfoFromUserRead(result.getStreamSegmentStartOffset(), result.getMaxResultLength(), fromStorage);
@@ -149,23 +151,17 @@ public final class ReadPrefetchManager implements AutoCloseable {
      * @param request Read request related to the prefetch read to be generated.
      */
     CompletableFuture<Void> tryPrefetchData(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, @NonNull WireCommands.ReadSegment request) {
-        if (isPrefetchingDisallowed()) {
+        if (isPrefetchingDisallowed(segment)) {
             // Prefetching is disallowed, do nothing.
             return CompletableFuture.completedFuture(null);
         }
 
         // Now, we need to check if we can trigger a prefetch read request for this Segment and Reader.
         final UUID prefetchId = createPrefetchId(segment, request.getRequestId());
-        SegmentPrefetchInfo info = this.prefetchingInfoCache.get(prefetchId);
-        if (info != null && !info.isPrefetchableSegment()) {
-            // Non-prefetchable Segment, do nothing.
-            return CompletableFuture.completedFuture(null);
-        }
-
         return this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> buildPrefetchingReadFuture(segmentStore, segment, prefetchId));
     }
 
-    private boolean isPrefetchingDisallowed() {
+    private boolean isPrefetchingDisallowed(String segment) {
         // We can prefetch only if canPrefetch evaluates to true (i.e., Direct Memory cache has space) and the Segment is not system-related.
         boolean isCacheFull = cacheFull.get();
         if (isCacheFull) {
@@ -173,7 +169,7 @@ public final class ReadPrefetchManager implements AutoCloseable {
             log.warn("Not allowed to trigger prefetch reads (Direct Memory cache may be under pressure).");
         }
 
-        return isCacheFull;
+        return isCacheFull || !isPrefetchableSegmentType(segment);
     }
 
     /**
@@ -183,7 +179,7 @@ public final class ReadPrefetchManager implements AutoCloseable {
      * @return Whether the Segment is prefetchable or not.
      */
     private boolean isPrefetchableSegmentType(String segment) {
-        return !segment.contains(NameUtils.INTERNAL_NAME_PREFIX);
+        return !NameUtils.isSegmentInSystemScope(segment) && !NameUtils.isInternalSegment(segment);
     }
 
     private CompletableFuture<Void> buildPrefetchingReadFuture(@NonNull StreamSegmentStore segmentStore, @NonNull String segment, UUID prefetchId) {
@@ -197,7 +193,7 @@ public final class ReadPrefetchManager implements AutoCloseable {
                 })
                 .handle((prefetchReadResult, ex) -> {
                     if (ex != null) {
-                        boolean expectedException = (Exceptions.unwrap(ex) instanceof UnableToPrefetchException || Exceptions.unwrap(ex) instanceof PrefetchNotNeededException);
+                        boolean expectedException = Exceptions.unwrap(ex) instanceof UnableToPrefetchException || Exceptions.unwrap(ex) instanceof PrefetchNotNeededException;
                         if (!expectedException) {
                             log.error("PrefetchId[{}]: Problem while performing a prefetch read.", prefetchId, ex);
                         }
@@ -311,16 +307,17 @@ public final class ReadPrefetchManager implements AutoCloseable {
                     prefetchedDataLength += data.getLength();
                     data.release();
                     log.info("PREFETCHING DATA FROM STORAGE, SO FAR {}", prefetchedDataLength);
-                    canPrefetch = true;
                 } else {
                     // Stopped reading data from Storage, so do not continue prefetching.
                     log.info("NOT REQUESTING CONTENT FOR {}", entry);
                     canPrefetch = false;
+                    break;
                 }
             }
         } catch (Exception ex) {
             log.error("Error reading prefetched data in callback.", ex);
         }
+
         return new ImmutablePair<>(prefetchedDataLength, canPrefetch);
     }
 
@@ -345,9 +342,6 @@ public final class ReadPrefetchManager implements AutoCloseable {
     @ToString
     @VisibleForTesting
     static class SegmentPrefetchInfo {
-        // Whether this Segment should be considered or not for prefetching. In general, no internal Segment
-        // should be considered for prefetching.
-        protected volatile boolean prefetchableSegment;
 
         // Info about progress of reader.
         protected volatile long lastReadOffset;
@@ -362,7 +356,6 @@ public final class ReadPrefetchManager implements AutoCloseable {
         private volatile boolean continuePrefetching;
 
         SegmentPrefetchInfo(long lastReadOffset, int lastReadLength, boolean fromStorage, int maxPrefetchReadLength) {
-            this.prefetchableSegment = true;
             this.lastReadOffset = lastReadOffset;
             this.lastReadLength = lastReadLength;
             this.lastReadFromStorage = fromStorage;
@@ -371,12 +364,6 @@ public final class ReadPrefetchManager implements AutoCloseable {
             this.prefetchStartOffset = 0;
             this.prefetchEndOffset = 0;
             this.continuePrefetching = true;
-        }
-
-        static SegmentPrefetchInfo getNonPrefetchableSegmentInfo() {
-            SegmentPrefetchInfo segmentPrefetchInfo = new SegmentPrefetchInfo(0, 0, false, 0);
-            segmentPrefetchInfo.setPrefetchableSegment(false);
-            return segmentPrefetchInfo;
         }
 
         /**
@@ -411,7 +398,7 @@ public final class ReadPrefetchManager implements AutoCloseable {
          * @return Whether the last read from the reader and Segment is sequential.
          */
         boolean checkSequentialRead(long newReadStreamSegmentStartOffset) {
-            return newReadStreamSegmentStartOffset - this.lastReadOffset > 0
+            return newReadStreamSegmentStartOffset - this.lastReadOffset >= 0
                     && newReadStreamSegmentStartOffset - this.lastReadOffset < this.maxPrefetchReadLength;
         }
     }
@@ -420,7 +407,8 @@ public final class ReadPrefetchManager implements AutoCloseable {
      * Exception to indicate that prefetching is not possible at this time.
      */
     static class UnableToPrefetchException extends Throwable {
-        public UnableToPrefetchException(String d) { //FIXME
+        public UnableToPrefetchException(String message) {
+            super(message);
         }
     }
 
