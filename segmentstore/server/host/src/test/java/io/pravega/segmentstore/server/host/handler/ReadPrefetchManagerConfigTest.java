@@ -28,10 +28,6 @@ public class ReadPrefetchManagerConfigTest {
         AssertExtensions.assertThrows(ConfigurationException.class, () ->
                 ReadPrefetchManagerConfig.builder().with(ReadPrefetchManagerConfig.PREFETCH_READ_LENGTH, (int) Long.MAX_VALUE).build());
         AssertExtensions.assertThrows(ConfigurationException.class, () ->
-                ReadPrefetchManagerConfig.builder().with(ReadPrefetchManagerConfig.CONSUMED_PREFETCHED_DATA_THRESHOLD, -0.1).build());
-        AssertExtensions.assertThrows(ConfigurationException.class, () ->
-                ReadPrefetchManagerConfig.builder().with(ReadPrefetchManagerConfig.CONSUMED_PREFETCHED_DATA_THRESHOLD, 1.1).build());
-        AssertExtensions.assertThrows(ConfigurationException.class, () ->
                 ReadPrefetchManagerConfig.builder().with(ReadPrefetchManagerConfig.TRACKED_ENTRY_EVICTION_TIME_SECONDS, 0).build());
     }
 }

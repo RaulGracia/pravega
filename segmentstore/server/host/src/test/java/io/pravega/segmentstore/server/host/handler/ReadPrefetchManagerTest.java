@@ -51,10 +51,17 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
+/**
+ * Tests for ReadPrefetchManager class.
+ */
 public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
+    /**
+     * Tests basic POJO behavior of SegmentPrefetchInfo class.
+     */
     @Test
     public void testSegmentPrefetchInfo() {
         ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(1, 2, false, 4 * 1024 * 1024);
@@ -68,15 +75,16 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Assert.assertNotNull(segmentPrefetchInfo.toString());
     }
 
+    /**
+     * Test preconditions that dictate when to trigger a prefetch read.
+     */
     @Test
     public void testSegmentPrefetchInfoTriggerPrefetchReadPreconditions() {
         long startReadOffset = 10 * 1024 * 1024;
-        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(startReadOffset, 20, false, 4 * 1024 * 1024);
-        // Test isSequentialRead() method. Let's assume that we have prefetched data for a Segment from ranging from
-        // offsets 50 and 100. We want to test the notion of "sequential read" from a prefetching perspective.
-        segmentPrefetchInfo.setPrefetchStartOffset(startReadOffset + 20);
-        segmentPrefetchInfo.setPrefetchEndOffset(startReadOffset + 100);
-        // By default, we initialize sequential to true.
+        int readLength = 20;
+        int prefetchReadLength = 4 * 1024 * 1024;
+        ReadPrefetchManager.SegmentPrefetchInfo segmentPrefetchInfo = new ReadPrefetchManager.SegmentPrefetchInfo(startReadOffset, readLength, false, prefetchReadLength);
+        // By default, we are optimistic and assume that Stream reads are sequential (when we don't have observations to decide).
         Assert.assertTrue(segmentPrefetchInfo.isSequentialRead());
 
         // If offsets for the last read are way before or after the range of prefetching data, it may mean that the
@@ -84,51 +92,64 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Assert.assertFalse(segmentPrefetchInfo.checkSequentialRead(1));
         Assert.assertFalse(segmentPrefetchInfo.checkSequentialRead(10 * startReadOffset));
 
-        // After finding a non-sequential read, the prefetched data is set to 0, so this evaluates to true.
-        segmentPrefetchInfo.updateInfoFromUserRead(1024 * 1024, 10, true);
+        // Reads withing lastReadOffset to lastReadOffset + prefetchReadLength are considered sequential.
+        Assert.assertTrue(segmentPrefetchInfo.checkSequentialRead(startReadOffset));
+        Assert.assertTrue(segmentPrefetchInfo.checkSequentialRead(startReadOffset + prefetchReadLength - 1));
+
+        // After updating segmentPrefetchInfo with a non-sequential read, isSequentialRead() should evaluate to false.
+        segmentPrefetchInfo.updateInfoFromUserRead(1024 * 1024, readLength, true);
         Assert.assertFalse(segmentPrefetchInfo.isSequentialRead());
-        Assert.assertTrue(segmentPrefetchInfo.needsToRefillPrefetchedData(40, 0.75));
 
         // However, if the last read is within the expected bounds of a sequential read, the method should output true.
-        segmentPrefetchInfo.updateInfoFromUserRead(2 * 1024 * 1024, 10, true);
+        segmentPrefetchInfo.updateInfoFromUserRead(2 * 1024 * 1024, readLength, true);
         Assert.assertTrue(segmentPrefetchInfo.isSequentialRead());
 
         // Now, test whether there is enough prefetched data or not for this reader.
-        segmentPrefetchInfo.setPrefetchedDataLength(30);
-        Assert.assertFalse(segmentPrefetchInfo.needsToRefillPrefetchedData(40, 0.75));
-        segmentPrefetchInfo.setPrefetchedDataLength(20);
-        Assert.assertFalse(segmentPrefetchInfo.needsToRefillPrefetchedData(40, 0.75));
-        Assert.assertFalse(segmentPrefetchInfo.needsToRefillPrefetchedData(40, 0.75));
-        segmentPrefetchInfo.setPrefetchedDataLength(10);
-        Assert.assertTrue(segmentPrefetchInfo.needsToRefillPrefetchedData(40, 0.75));
-
-        // When the previous both conditions are met, then shouldPrefetchAgain() should be true.
-        Assert.assertTrue(segmentPrefetchInfo.needsToRefillPrefetchedData(40, 0.75));
+        // Case 1: prefetchStartOffset is behind the last read from the user. In this case, we need to prefetch.
+        segmentPrefetchInfo.updateInfoFromUserRead(startReadOffset, readLength, false);
+        segmentPrefetchInfo.setPrefetchStartOffset(startReadOffset);
+        Assert.assertTrue(segmentPrefetchInfo.needsToRefillPrefetchedData());
+        // Case 2: prefetchStartOffset is equal to last user read, we need to prefetch.
+        segmentPrefetchInfo.setPrefetchStartOffset(startReadOffset + readLength);
+        Assert.assertTrue(segmentPrefetchInfo.needsToRefillPrefetchedData());
+        // Case 3: prefetchStartOffset is ahead the last user read, do not prefetch.
+        segmentPrefetchInfo.setPrefetchStartOffset(startReadOffset + readLength + 1);
+        Assert.assertFalse(segmentPrefetchInfo.needsToRefillPrefetchedData());
+        // Case 4: Even if we should prefetch considering the positions of reader and prefetch offsets, the last prefetch
+        // read notifies us that either the prefetched data is already in cache or we cannot read further this segment.
+        // In this case, we do not prefetch any more data.
+        segmentPrefetchInfo.setPrefetchStartOffset(startReadOffset + 3 * 1024 * 1024);
+        segmentPrefetchInfo.setContinuePrefetching(false);
+        Assert.assertFalse(segmentPrefetchInfo.needsToRefillPrefetchedData());
     }
 
+    /**
+     * Basic tests of ReadPrefetchManager constructor.
+     */
     @Test
     public void testReadPrefetchManagerConstructor() throws Exception {
         AtomicBoolean isCacheFull = new AtomicBoolean(false);
         Supplier<Boolean> canPrefetchSupplier = isCacheFull::get;
         ReadPrefetchManagerConfig readPrefetchManagerConfig = ReadPrefetchManagerConfig.builder()
                 .with(ReadPrefetchManagerConfig.PREFETCH_READ_LENGTH, 123)
-                .with(ReadPrefetchManagerConfig.CONSUMED_PREFETCHED_DATA_THRESHOLD, 0.5)
                 .with(ReadPrefetchManagerConfig.TRACKED_ENTRY_MAX_COUNT, 100)
                 .with(ReadPrefetchManagerConfig.TRACKED_ENTRY_EVICTION_TIME_SECONDS, 10)
                 .build();
         @Cleanup
         ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(canPrefetchSupplier, readPrefetchManagerConfig, this.executorService());
         Assert.assertEquals(123, readPrefetchManager.getPrefetchReadLength());
-        Assert.assertEquals(0.5, readPrefetchManager.getConsumedPrefetchedDataThreshold(), 0.0);
         Assert.assertEquals(100, readPrefetchManager.getPrefetchingInfoCache().getMaxSize());
         Assert.assertFalse(readPrefetchManager.getCacheFull().get());
         isCacheFull.set(true);
         Assert.assertTrue(readPrefetchManager.getCacheFull().get());
         WireCommands.ReadSegment request = new WireCommands.ReadSegment("segment", 0, 100, "", 0);
-        // Check that we cannot prefetch data if canPrefetchSupplier returns false.
+        // Check that we cannot prefetch data if isCacheFull returns true.
         Assert.assertNull(readPrefetchManager.tryPrefetchData(Mockito.mock(StreamSegmentStore.class), "segment", request).join());
     }
 
+    /**
+     * Test collection of information from user reads.
+     */
     @Test
     public void testCollectInfoFromUser() throws Exception {
         Supplier<Boolean> canPrefetchSupplier = () -> false;
@@ -153,14 +174,20 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Assert.assertEquals(100L, prefetchEntry.getLastReadLength());
     }
 
+    /**
+     * Test to check prefetch read preconditions.
+     */
     @Test
     public void testCheckPrefetchPreconditions() throws Exception {
+        long readOffset = 5 * 1024 * 1024;
+        long segmentLength = 100 * 1024 * 1024;
+        int prefetchReadLength = 4 * 1024 * 1024;
         Supplier<Boolean> canPrefetchSupplier = () -> false;
         ReadPrefetchManagerConfig readPrefetchManagerConfig = ReadPrefetchManagerConfig.builder().build();
         @Cleanup
         ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(canPrefetchSupplier, readPrefetchManagerConfig, this.executorService());
         UUID prefetchId = readPrefetchManager.createPrefetchId("segment", 0);
-        SegmentProperties segmentProperties = StreamSegmentInformation.builder().name("segment").length(100).startOffset(0).storageLength(100).build();
+        SegmentProperties segmentProperties = StreamSegmentInformation.builder().name("segment").length(segmentLength).startOffset(0).storageLength(segmentLength).build();
         // Prefetch tracker cache is empty, so it should throw.
         AssertExtensions.assertThrows(ReadPrefetchManager.UnableToPrefetchException.class,
                 () -> readPrefetchManager.checkPrefetchPreconditions(prefetchId, segmentProperties));
@@ -169,15 +196,15 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         WireCommands.ReadSegment request = new WireCommands.ReadSegment("segment", 0, 100, "", 0);
         ReadResult result = new StreamSegmentReadResult(0, 50, new MockNextEntrySupplier(), "");
         readPrefetchManager.collectInfoFromUserRead(request, result, false);
-        request = new WireCommands.ReadSegment("segment", 5 * 1024 * 1024, 100, "", 0);
-        result = new StreamSegmentReadResult(5 * 1024 * 1024, 50, new MockNextEntrySupplier(), "");
+        request = new WireCommands.ReadSegment("segment", readOffset, 100, "", 0);
+        result = new StreamSegmentReadResult(readOffset, 50, new MockNextEntrySupplier(), "");
         readPrefetchManager.collectInfoFromUserRead(request, result, true);
         AssertExtensions.assertThrows(ReadPrefetchManager.UnableToPrefetchException.class,
                 () -> readPrefetchManager.checkPrefetchPreconditions(prefetchId, segmentProperties));
 
         // Check that if the last user request comes from storage and is sequential, we issue a prefetch read.
-        request = new WireCommands.ReadSegment("segment", 6 * 1024 * 1024, 100, "", 0);
-        result = new StreamSegmentReadResult(6 * 1024 * 1024, 50, new MockNextEntrySupplier(), "");
+        request = new WireCommands.ReadSegment("segment", readOffset + 1024 * 1024, 100, "", 0);
+        result = new StreamSegmentReadResult(readOffset + 1024 * 1024, 50, new MockNextEntrySupplier(), "");
         readPrefetchManager.collectInfoFromUserRead(request, result, true);
         Assert.assertNotNull(readPrefetchManager.checkPrefetchPreconditions(prefetchId, segmentProperties));
 
@@ -188,11 +215,15 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
         // If preconditions are satisfied, but we still have enough data prefetched, throw PrefetchNotNeededException.
         ReadPrefetchManager.SegmentPrefetchInfo entry = readPrefetchManager.getPrefetchingInfoCache().get(prefetchId);
-        entry.setPrefetchedDataLength(4 * 1024 * 1024);
+        entry.setPrefetchStartOffset(readOffset + 1024 * 1024 + 51);
+        entry.setPrefetchEndOffset(readOffset + 1024 * 1024 + prefetchReadLength);
         AssertExtensions.assertThrows(ReadPrefetchManager.PrefetchNotNeededException.class,
                 () -> readPrefetchManager.checkPrefetchPreconditions(prefetchId, segmentProperties));
     }
 
+    /**
+     * Test calculation of read prefetch offsets.
+     */
     @Test
     public void testCalculatePrefetchLength() throws Exception {
         Supplier<Boolean> canPrefetchSupplier = () -> false;
@@ -208,7 +239,8 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
 
         // Add a prefetch cache entry for this Segment and Reader and verify prefetch length calculation.
         WireCommands.ReadSegment request = new WireCommands.ReadSegment("segment", 0, 100, "", 0);
-        ReadResult result = new StreamSegmentReadResult(0, 50, new MockNextEntrySupplier(), "");
+        ReadResult result = spy(new StreamSegmentReadResult(0, 50, new MockNextEntrySupplier(), ""));
+        when(result.getConsumedLength()).thenReturn(50);
         readPrefetchManager.collectInfoFromUserRead(request, result, true);
         // The Segment has 100 bytes, and the user has already read 50, so the max data to prefetch is 50 bytes from offset 50.
         Assert.assertEquals(50, (int) readPrefetchManager.calculatePrefetchReadLength(prefetchId, segmentProperties).getRight());
@@ -221,6 +253,9 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         Assert.assertEquals(50, (long) readPrefetchManager.calculatePrefetchReadLength(prefetchId, segmentProperties2).getLeft());
     }
 
+    /**
+     * Test method that populates the cache with data coming from Storage upon a prefetch read.
+     */
     @Test
     public void testReadPrefetchCallback() throws Exception {
         int readLength = 100;
@@ -231,7 +266,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         ReadResult readResult = Mockito.mock(ReadResult.class);
         Mockito.when(readResult.hasNext()).thenReturn(true).thenReturn(false);
         // Handle a null ReadEntry.
-        readPrefetchManager.prefetchReadCallback(readResult);
+        readPrefetchManager.populateCacheWithPrefetchRead(readResult);
 
         // Now try with a single prefetch Storage read.
         Mockito.when(readResult.hasNext()).thenReturn(true).thenReturn(false);
@@ -240,24 +275,27 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         BufferView data = new ByteArraySegment(new byte[readLength]);
         Mockito.when(readResultEntry.getContent()).thenReturn(CompletableFuture.completedFuture(data));
         Mockito.when(readResult.next()).thenReturn(readResultEntry);
-        ImmutablePair<Integer, Boolean> result = readPrefetchManager.prefetchReadCallback(readResult);
+        ImmutablePair<Integer, Boolean> result = readPrefetchManager.populateCacheWithPrefetchRead(readResult);
         // The prefetched data size should be equal to the data length and canPrefetch should be true, as the last read is from storage.
         Assert.assertEquals(readLength, (int) result.getLeft());
         Assert.assertTrue(result.getRight());
 
-        // Simulated that we gat a Storage read and a non-storage read after that.
-        Mockito.when(readResult.hasNext()).thenReturn(true).thenReturn(true);
+        // Simulated that we got a Storage read and a non-storage read after that.
+        Mockito.when(readResult.hasNext()).thenReturn(true).thenReturn(true).thenReturn(false);
         readResultEntry = Mockito.mock(ReadResultEntry.class);
         Mockito.when(readResultEntry.getType()).thenReturn(ReadResultEntryType.Storage).thenReturn(ReadResultEntryType.Future);
         data = new ByteArraySegment(new byte[readLength]);
         Mockito.when(readResultEntry.getContent()).thenReturn(CompletableFuture.completedFuture(data));
         Mockito.when(readResult.next()).thenReturn(readResultEntry);
-        result = readPrefetchManager.prefetchReadCallback(readResult);
+        result = readPrefetchManager.populateCacheWithPrefetchRead(readResult);
         // The prefetched data size should be equal to the data length but canPrefetch should be false now.
         Assert.assertEquals(readLength, (int) result.getLeft());
         Assert.assertFalse(result.getRight());
     }
 
+    /**
+     * Tests to the whole method intended to generate a CompletableFuture that attempts to prefetch data if conditions are met.
+     */
     @Test
     public void testTryPrefetchData() throws Exception {
         String segmentName = "segment";
@@ -293,6 +331,9 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         readPrefetchManager.tryPrefetchData(store, segmentName, request).join();
     }
 
+    /**
+     * Test metrics collection related to read prefetching.
+     */
     @Test
     public void testReadPrefetchManagerMetrics() throws Exception {
         MetricsProvider.initialize(MetricsConfig.builder()
