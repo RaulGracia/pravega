@@ -865,9 +865,15 @@ public final class NameUtils {
     public static boolean isSegmentInSystemScope(String segmentName) {
         return segmentName.startsWith(INTERNAL_SCOPE_PREFIX);
     }
-    
+
+    /**
+     * Returns whether the input Segment is an Internal Segment (e.g., ReaderGroup Segment, KVTable).
+     *
+     * @param segmentName Name of the Segment.
+     * @return Whether the Segment is an internal one (i.e., contains "_" after scope separator).
+     */
     public static boolean isInternalSegment(String segmentName) {
-        return segmentName.charAt(segmentName.indexOf(NAME_SEPARATOR) + 1) == '_';
+        return segmentName.charAt(segmentName.indexOf(NAME_SEPARATOR) + 1) == INTERNAL_NAME_PREFIX.charAt(0);
     }
 
     /**

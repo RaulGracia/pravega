@@ -125,18 +125,14 @@ public final class ReadPrefetchManager implements AutoCloseable {
 
         // Identifier that combines the Segment name and the reader (i.e., connection) to perform prefetching.
         UUID prefetchId = createPrefetchId(request.getSegment(), request.getRequestId());
-        log.info("PrefetchId[{}]: Collecting user read info: fromStorage = {}, {}", prefetchId, fromStorage, request);
         // Queue a task to add the info to the prefetchingInfoCache.
         this.readPrefetchProcessor.add(ImmutableList.of(prefetchId), () -> CompletableFuture.supplyAsync(() -> {
             SegmentPrefetchInfo segmentPrefetchInfo = this.prefetchingInfoCache.get(prefetchId);
+            // Initialize or update the storage read prefetching information for this reader and Segment.
             if (segmentPrefetchInfo == null) {
-                SegmentPrefetchInfo info = new SegmentPrefetchInfo(result.getStreamSegmentStartOffset(), result.getMaxResultLength(), fromStorage, this.prefetchReadLength);
-                log.info("PrefetchId[{}]: Adding new entry: {}", prefetchId, info);
-                // Initialize the entry for this reader and Segment.
-                this.prefetchingInfoCache.put(prefetchId, info);
+                this.prefetchingInfoCache.put(prefetchId, new SegmentPrefetchInfo(result.getStreamSegmentStartOffset(),
+                        result.getMaxResultLength(), fromStorage, this.prefetchReadLength));
             } else {
-                log.info("PrefetchId[{}]: UPDATING entry: startOffset = {}, consumedLength = {}, fromStorage = {}", prefetchId,
-                        result.getStreamSegmentStartOffset(), result.getConsumedLength(), fromStorage);
                 segmentPrefetchInfo.updateInfoFromUserRead(result.getStreamSegmentStartOffset(), result.getMaxResultLength(), fromStorage);
             }
             return null;
@@ -187,19 +183,20 @@ public final class ReadPrefetchManager implements AutoCloseable {
         return segmentStore.getStreamSegmentInfo(segment, timeout)
                 .thenApply(segmentProperties -> checkPrefetchPreconditions(prefetchId, segmentProperties))
                 .thenApply(segmentProperties -> calculatePrefetchReadLength(prefetchId, segmentProperties))
-                .thenCompose(offsetAndLength -> {
-                    log.info("PrefetchId[{}]: CREATING READ FOR {} FROM OFFSET {} OF LENGTH {}", prefetchId, segment, offsetAndLength.getLeft(), offsetAndLength.getRight());
-                    return segmentStore.read(segment, offsetAndLength.getLeft(), offsetAndLength.getRight(), timeout);
-                })
+                .thenCompose(offsetAndLength -> segmentStore.read(segment, offsetAndLength.getLeft(), offsetAndLength.getRight(), timeout))
                 .handle((prefetchReadResult, ex) -> {
                     if (ex != null) {
-                        boolean expectedException = Exceptions.unwrap(ex) instanceof UnableToPrefetchException || Exceptions.unwrap(ex) instanceof PrefetchNotNeededException;
+                        boolean expectedException = Exceptions.unwrap(ex) instanceof UnableToPrefetchException
+                                || Exceptions.unwrap(ex) instanceof PrefetchNotNeededException;
                         if (!expectedException) {
                             log.error("PrefetchId[{}]: Problem while performing a prefetch read.", prefetchId, ex);
+                        } else {
+                            log.debug("PrefetchId[{}]: Not prefetching this time (Segment = {}, Reason = {})", prefetchId, segment, ex.getMessage());
                         }
                     } else {
-                        ImmutablePair<Integer, Boolean> prefetchReadResultInfo = populateCacheWithPrefetchRead(prefetchReadResult);
-                        log.info("PrefetchId[{}]: prefetchReadResultInfo {}.", prefetchId, prefetchReadResultInfo);
+                        ImmutablePair<Integer, Boolean> prefetchReadResultInfo = populateCacheWithPrefetchRead(prefetchId, prefetchReadResult);
+                        log.debug("PrefetchId[{}]: Prefetched bytes from Storage {} (continuePrefetching = {}).", prefetchId,
+                                prefetchReadResultInfo.getLeft(), prefetchReadResultInfo.getRight());
                         // Update the prefetching information for this entry based on the read result.
                         SegmentPrefetchInfo segmentPrefetchInfo = this.prefetchingInfoCache.get(prefetchId);
                         if (segmentPrefetchInfo != null) {
@@ -240,27 +237,28 @@ public final class ReadPrefetchManager implements AutoCloseable {
     SegmentProperties checkPrefetchPreconditions(UUID prefetchId, SegmentProperties segmentProperties) {
         SegmentPrefetchInfo segmentPrefetchInfo = this.prefetchingInfoCache.get(prefetchId);
 
-        // If we do not have information about this prefetchId or the read pattern is not sequential, throw.
-        if (segmentPrefetchInfo == null || !segmentPrefetchInfo.isSequentialRead()) {
-            log.debug("PrefetchId[{}]: UNABLE TO PREFETCH -> segmentPrefetchInfo = {}, segment = {}", prefetchId, segmentPrefetchInfo, segmentProperties);
-            throw new CompletionException(new UnableToPrefetchException("Unable to prefetch data."));
+        // If we do not have information about this prefetchId, throw.
+        if (segmentPrefetchInfo == null) {
+            throw new CompletionException(new UnableToPrefetchException("Prefetch info does not exist."));
+        }
+
+        // If the read pattern is not sequential, throw.
+        if (!segmentPrefetchInfo.isSequentialRead()) {
+            throw new CompletionException(new UnableToPrefetchException("Non-sequential reads for Segment."));
         }
 
         // If we are close to the end of the Segment, there is no point to continue prefetching.
         if (segmentProperties.getLength() - segmentPrefetchInfo.getPrefetchStartOffset() < segmentPrefetchInfo.getMaxPrefetchReadLength()) {
-            log.info("PrefetchId[{}]: not enough data at tail to prefetch -> segmentPrefetchInfo = {}, segment = {}", prefetchId, segmentPrefetchInfo, segmentProperties);
-            throw new CompletionException(new PrefetchNotNeededException());
+            throw new CompletionException(new PrefetchNotNeededException("Not enough data at the tail of the Segment."));
         }
 
         // We need to check if we have enough prefetched data for this Segment and Reader.
         if (segmentPrefetchInfo.isLastReadFromStorage() || segmentPrefetchInfo.needsToRefillPrefetchedData()) {
-            log.info("PrefetchId[{}]: YES, PREFETCHING-> segmentPrefetchInfo = {}, segment = {}", prefetchId, segmentPrefetchInfo, segmentProperties);
             return segmentProperties;
         }
 
         // We still have prefetched data for this reader, so do nothing.
-        log.info("PrefetchId[{}]: PREFETCH NOT NEEDED-> segmentPrefetchInfo = {}, segment = {}", prefetchId, segmentPrefetchInfo, segmentProperties);
-        throw new CompletionException(new PrefetchNotNeededException());
+        throw new CompletionException(new PrefetchNotNeededException("Available prefetched data, not prefetching this time."));
     }
 
     @VisibleForTesting
@@ -270,29 +268,26 @@ public final class ReadPrefetchManager implements AutoCloseable {
             throw new CompletionException(new UnableToPrefetchException("Prefetch entry not found or Segment deleted when attempting to calculate prefetch length."));
         }
         long lastUserReadBytePosition = entry.getLastReadOffset() + entry.getLastReadLength();
-        log.info("PrefetchId[{}] lastUserReadBytePosition = {}, segment = {}", prefetchId, lastUserReadBytePosition, segmentProperties);
         long maxAlreadyReadOffset = Math.max(lastUserReadBytePosition, entry.getPrefetchEndOffset());
-        log.info("PrefetchId[{}] maxAlreadyReadOffset = {}, segment = {}", prefetchId, maxAlreadyReadOffset, segmentProperties);
         long maxAvailableDataToPrefetch = Math.max(0, segmentProperties.getLength() - maxAlreadyReadOffset);
-        log.info("PrefetchId[{}] maxAvailableDataToPrefetch = {}, segment = {}", prefetchId, maxAvailableDataToPrefetch, segmentProperties);
         int prefetchReadLength = MathHelpers.minMax(this.prefetchReadLength, 0, (int) maxAvailableDataToPrefetch);
-        log.info("PrefetchId[{}] prefetchReadLength = {}, segment = {}", prefetchId, prefetchReadLength, segmentProperties);
         if (prefetchReadLength <= 0) {
-            log.warn("NO DATA T0 PREFETCH for segment {}, with stored info {}.", segmentProperties, entry);
-            throw new CompletionException(new UnableToPrefetchException("Not possible to issue prefetch read."));
+            log.info("PrefetchId[{}]: No data to prefetch for segment {} with stored info {}.", prefetchId, segmentProperties, entry);
+            throw new CompletionException(new UnableToPrefetchException("Not enough data to trigger prefetch read."));
         }
+
         return new ImmutablePair<>(maxAlreadyReadOffset, prefetchReadLength);
     }
 
     /**
      * Does actual reading of the prefetch read, so it can be cached in memory for subsequent user reads.
      *
+     * @param prefetchId Prefetch entry id for this Reader and Segment.
      * @param prefetchReadResult {@link ReadResult} of the prefetch read.
      * @return ImmutablePair consisting of the read length and whether we should continue prefetching for this Segment and reader.
      */
     @VisibleForTesting
-    ImmutablePair<Integer, Boolean> populateCacheWithPrefetchRead(ReadResult prefetchReadResult) {
-        log.info("Starting populateCacheWithPrefetchRead for {}", prefetchReadResult);
+    ImmutablePair<Integer, Boolean> populateCacheWithPrefetchRead(UUID prefetchId, ReadResult prefetchReadResult) {
         int prefetchedDataLength = 0;
         boolean canPrefetch = true;
         try {
@@ -300,16 +295,13 @@ public final class ReadPrefetchManager implements AutoCloseable {
                 ReadResultEntry entry = prefetchReadResult.next();
                 if (entry != null && entry.getType() == Storage) {
                     // By reading the entry contents, data should be cached to improve latency of the next user reads.
-                    log.info("AN ENTRY IS FROM STORAGE, START READING IT {}", prefetchedDataLength);
                     entry.requestContent(this.timeout);
-                    log.info("ABLE TO GET THE CONTENT OF THE STORAGE ENTRY {}", prefetchedDataLength);
                     BufferView data = entry.getContent().get(timeout.getSeconds(), TimeUnit.SECONDS);
                     prefetchedDataLength += data.getLength();
                     data.release();
-                    log.info("PREFETCHING DATA FROM STORAGE, SO FAR {}", prefetchedDataLength);
                 } else {
                     // Stopped reading data from Storage, so do not continue prefetching.
-                    log.info("NOT REQUESTING CONTENT FOR {}", entry);
+                    log.info("PrefetchId[{}]: Interrupted further prefetch reads due to {}.", prefetchId, entry);
                     canPrefetch = false;
                     break;
                 }
@@ -416,6 +408,9 @@ public final class ReadPrefetchManager implements AutoCloseable {
      * Exception to indicate that prefetching is not needed at this time.
      */
     static class PrefetchNotNeededException extends Throwable {
+        public PrefetchNotNeededException(String message) {
+            super(message);
+        }
     }
 
     //endregion

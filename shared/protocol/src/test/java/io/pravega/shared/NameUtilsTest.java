@@ -26,8 +26,7 @@ import org.junit.Test;
 import org.junit.rules.Timeout;
 
 import static org.apache.commons.lang3.RandomStringUtils.randomAlphanumeric;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 public class NameUtilsTest {
 
@@ -222,6 +221,13 @@ public class NameUtilsTest {
     public void testIsSegmentInSystemScope() {
         Assert.assertTrue(NameUtils.isSegmentInSystemScope("_system/some/segment"));
         Assert.assertFalse(NameUtils.isSegmentInSystemScope("_not/in/_system_scope"));
+    }
+
+    @Test
+    public void testIsInternalSegment() {
+        assertTrue(NameUtils.isInternalSegment("scope/_internalSegment"));
+        assertFalse(NameUtils.isInternalSegment("scope/notInternalSegment"));
+        assertFalse(NameUtils.isInternalSegment("_system/notInternalSegment"));
     }
 
     private String getSegmentName(String delimiter) {

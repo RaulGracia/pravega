@@ -92,6 +92,9 @@ public class ServiceConfig {
     public static final Property<Boolean> ENABLE_ADMIN_GATEWAY = Property.named("admin.gateway.enable", false);
     public static final Property<Integer> ADMIN_GATEWAY_PORT = Property.named("admin.gateway.port", 9999);
 
+    // Enable storage read prefetching
+    public static final Property<Boolean> READ_PREFETCH_ENABLED = Property.named("readprefetch.enabled", true);
+
     public static final String COMPONENT_CODE = "pravegaservice";
 
     //endregion
@@ -347,6 +350,13 @@ public class ServiceConfig {
 
     @Getter
     private final Duration healthCheckInterval;
+
+    /**
+     * Whether to enable Storage Read Prefetching.
+     */
+    @Getter
+    private final boolean readPrefetchEnabled;
+
     //endregion
 
     //region Constructor
@@ -426,6 +436,7 @@ public class ServiceConfig {
         this.healthCheckInterval = Duration.ofSeconds(properties.getInt(HEALTH_CHECK_INTERVAL_SECONDS));
         this.enableAdminGateway = properties.getBoolean(ENABLE_ADMIN_GATEWAY);
         this.adminGatewayPort = properties.getInt(ADMIN_GATEWAY_PORT);
+        this.readPrefetchEnabled = properties.getBoolean(READ_PREFETCH_ENABLED);
     }
 
     /**
@@ -482,6 +493,7 @@ public class ServiceConfig {
                 .append(String.format("restListeningPort: %d", restListeningPort))
                 .append(String.format("restListeningIPAddress: %s", restListeningIPAddress))
                 .append(String.format("restServerEnabled: %b", restServerEnabled))
+                .append(String.format("readPrefetchEnabled: %b", readPrefetchEnabled))
                 .append(")")
                 .toString();
     }

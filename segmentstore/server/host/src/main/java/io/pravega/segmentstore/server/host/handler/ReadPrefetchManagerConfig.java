@@ -31,9 +31,9 @@ public class ReadPrefetchManagerConfig {
 
     //region Members
 
-    public static final Property<Integer> PREFETCH_READ_LENGTH = Property.named("prefetch.read.length.bytes", 4 * 1024 * 1024);
-    public static final Property<Integer> TRACKED_ENTRY_MAX_COUNT = Property.named("tracked.entry.count.max", 5000);
-    public static final Property<Integer> TRACKED_ENTRY_EVICTION_TIME_SECONDS = Property.named("tracked.entry.eviction.time.seconds", 60);
+    public static final Property<Integer> READ_PREFETCH_READ_LENGTH = Property.named("read.length.bytes", 4 * 1024 * 1024);
+    public static final Property<Integer> READ_PREFETCH_TRACKED_ENTRY_MAX_COUNT = Property.named("tracked.entry.count.max", 5000);
+    public static final Property<Integer> READ_PREFETCH_TRACKED_ENTRY_EVICTION_TIME_SECONDS = Property.named("tracked.entry.eviction.time.seconds", 60);
 
     private static final String COMPONENT_CODE = "readprefetch";
 
@@ -51,9 +51,9 @@ public class ReadPrefetchManagerConfig {
     //region Constructor
 
     private ReadPrefetchManagerConfig(TypedProperties properties) throws ConfigurationException {
-        this.prefetchReadLength = properties.getPositiveInt(PREFETCH_READ_LENGTH);
-        this.trackedEntriesMaxCount = properties.getPositiveInt(TRACKED_ENTRY_MAX_COUNT);
-        this.trackedEntriesEvictionTimeSeconds = properties.getDuration(TRACKED_ENTRY_EVICTION_TIME_SECONDS, ChronoUnit.SECONDS);
+        this.prefetchReadLength = properties.getPositiveInt(READ_PREFETCH_READ_LENGTH);
+        this.trackedEntriesMaxCount = properties.getPositiveInt(READ_PREFETCH_TRACKED_ENTRY_MAX_COUNT);
+        this.trackedEntriesEvictionTimeSeconds = properties.getDuration(READ_PREFETCH_TRACKED_ENTRY_EVICTION_TIME_SECONDS, ChronoUnit.SECONDS);
     }
 
     public static ConfigBuilder<ReadPrefetchManagerConfig> builder() {

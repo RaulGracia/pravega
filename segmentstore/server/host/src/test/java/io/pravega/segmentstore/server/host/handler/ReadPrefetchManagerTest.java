@@ -131,9 +131,9 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         AtomicBoolean isCacheFull = new AtomicBoolean(false);
         Supplier<Boolean> canPrefetchSupplier = isCacheFull::get;
         ReadPrefetchManagerConfig readPrefetchManagerConfig = ReadPrefetchManagerConfig.builder()
-                .with(ReadPrefetchManagerConfig.PREFETCH_READ_LENGTH, 123)
-                .with(ReadPrefetchManagerConfig.TRACKED_ENTRY_MAX_COUNT, 100)
-                .with(ReadPrefetchManagerConfig.TRACKED_ENTRY_EVICTION_TIME_SECONDS, 10)
+                .with(ReadPrefetchManagerConfig.READ_PREFETCH_READ_LENGTH, 123)
+                .with(ReadPrefetchManagerConfig.READ_PREFETCH_TRACKED_ENTRY_MAX_COUNT, 100)
+                .with(ReadPrefetchManagerConfig.READ_PREFETCH_TRACKED_ENTRY_EVICTION_TIME_SECONDS, 10)
                 .build();
         @Cleanup
         ReadPrefetchManager readPrefetchManager = new ReadPrefetchManager(canPrefetchSupplier, readPrefetchManagerConfig, this.executorService());
@@ -266,7 +266,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         ReadResult readResult = Mockito.mock(ReadResult.class);
         Mockito.when(readResult.hasNext()).thenReturn(true).thenReturn(false);
         // Handle a null ReadEntry.
-        readPrefetchManager.populateCacheWithPrefetchRead(readResult);
+        readPrefetchManager.populateCacheWithPrefetchRead(UUID.randomUUID(), readResult);
 
         // Now try with a single prefetch Storage read.
         Mockito.when(readResult.hasNext()).thenReturn(true).thenReturn(false);
@@ -275,7 +275,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         BufferView data = new ByteArraySegment(new byte[readLength]);
         Mockito.when(readResultEntry.getContent()).thenReturn(CompletableFuture.completedFuture(data));
         Mockito.when(readResult.next()).thenReturn(readResultEntry);
-        ImmutablePair<Integer, Boolean> result = readPrefetchManager.populateCacheWithPrefetchRead(readResult);
+        ImmutablePair<Integer, Boolean> result = readPrefetchManager.populateCacheWithPrefetchRead(UUID.randomUUID(), readResult);
         // The prefetched data size should be equal to the data length and canPrefetch should be true, as the last read is from storage.
         Assert.assertEquals(readLength, (int) result.getLeft());
         Assert.assertTrue(result.getRight());
@@ -287,7 +287,7 @@ public class ReadPrefetchManagerTest extends ThreadPooledTestSuite {
         data = new ByteArraySegment(new byte[readLength]);
         Mockito.when(readResultEntry.getContent()).thenReturn(CompletableFuture.completedFuture(data));
         Mockito.when(readResult.next()).thenReturn(readResultEntry);
-        result = readPrefetchManager.populateCacheWithPrefetchRead(readResult);
+        result = readPrefetchManager.populateCacheWithPrefetchRead(UUID.randomUUID(), readResult);
         // The prefetched data size should be equal to the data length but canPrefetch should be false now.
         Assert.assertEquals(readLength, (int) result.getLeft());
         Assert.assertFalse(result.getRight());

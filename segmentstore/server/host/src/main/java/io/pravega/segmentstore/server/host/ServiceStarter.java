@@ -349,9 +349,9 @@ public final class ServiceStarter {
     }
 
     private ReadPrefetchManager createReadPrefetchManager() {
-        log.info("Initializing Read Prefetch Manager (isCacheFull = {}).", this.serviceBuilder.getCacheManager().isEssentialEntriesOnly());
-        return new ReadPrefetchManager(() -> this.serviceBuilder.getCacheManager().isEssentialEntriesOnly(),
-                this.builderConfig.getConfig(ReadPrefetchManagerConfig::builder), this.serviceBuilder.getCoreExecutor());
+        log.info("Attempting to initialize Read Prefetch Manager (isReadPrefetchEnabled = {}).", this.serviceConfig.isReadPrefetchEnabled());
+        return this.serviceConfig.isReadPrefetchEnabled() ? new ReadPrefetchManager(() -> this.serviceBuilder.getCacheManager().isEssentialEntriesOnly(),
+                this.builderConfig.getConfig(ReadPrefetchManagerConfig::builder), this.serviceBuilder.getCoreExecutor()) : null;
     }
 
     //endregion
