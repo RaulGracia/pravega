@@ -41,11 +41,12 @@ public class BookKeeperConfig {
     public static final Property<Integer> BK_ENSEMBLE_SIZE = Property.named("ensemble.size", 3, "bkEnsembleSize");
     public static final Property<Integer> BK_ACK_QUORUM_SIZE = Property.named("ack.quorum.size", 2, "bkAckQuorumSize");
     public static final Property<Integer> BK_WRITE_QUORUM_SIZE = Property.named("write.quorum.size", 3, "bkWriteQuorumSize");
-    public static final Property<Integer> BK_WRITE_TIMEOUT = Property.named("write.timeout.milliseconds", 60000, "bkWriteTimeoutMillis");
+    public static final Property<Integer> BK_WRITE_TIMEOUT = Property.named("write.timeout.milliseconds", 30000, "bkWriteTimeoutMillis");
     public static final Property<Integer> BK_READ_TIMEOUT = Property.named("read.timeout.milliseconds", 30000, "bkReadTimeoutMillis");
+    public static final Property<Integer> BK_BOOKIE_HEALTH_CHECK_INTERVAL = Property.named("bookie.healthcheck.interval.milliseconds", 30000);
     public static final Property<Integer> BK_USER_TCP_TIMEOUT = Property.named("user.tcp.timeout.milliseconds", 10000);
     public static final Property<Integer> BK_READ_BATCH_SIZE = Property.named("read.batch.size", 64, "readBatchSize");
-    public static final Property<Integer> MAX_OUTSTANDING_BYTES = Property.named("write.outstanding.bytes.max", 256 * 1024 * 1024, "maxOutstandingBytes");
+    public static final Property<Integer> MAX_OUTSTANDING_BYTES = Property.named("write.outstanding.bytes.max", 32 * 1024 * 1024, "maxOutstandingBytes");
     public static final Property<Integer> BK_LEDGER_MAX_SIZE = Property.named("ledger.size.max", 1024 * 1024 * 1024, "bkLedgerMaxSize");
     public static final Property<String> BK_PASSWORD = Property.named("connect.security.auth.pwd", "", "bkPass");
     public static final Property<String> BK_LEDGER_PATH = Property.named("ledger.path", "", "bkLedgerPath");
@@ -142,6 +143,12 @@ public class BookKeeperConfig {
     private final int bkReadTimeoutMillis;
 
     /**
+     * The interval to check health of Bookies in ensemble, in milliseconds.
+     */
+    @Getter
+    private final int bkBookieHealthCheckIntervalMillis;
+
+    /**
      * The timeout for non-responsive TCP connections, in milliseconds.
      */
     @Getter
@@ -222,6 +229,7 @@ public class BookKeeperConfig {
 
         this.bkWriteTimeoutMillis = properties.getInt(BK_WRITE_TIMEOUT);
         this.bkReadTimeoutMillis = properties.getInt(BK_READ_TIMEOUT);
+        this.bkBookieHealthCheckIntervalMillis = properties.getInt(BK_BOOKIE_HEALTH_CHECK_INTERVAL);
         this.bkUserTcpTimeoutMillis = properties.getInt(BK_USER_TCP_TIMEOUT);
         this.bkReadBatchSize = properties.getInt(BK_READ_BATCH_SIZE);
         if (this.bkReadBatchSize < 1) {

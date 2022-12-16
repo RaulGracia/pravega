@@ -23,6 +23,7 @@ import io.pravega.segmentstore.storage.DurableDataLog;
 import io.pravega.segmentstore.storage.DurableDataLogException;
 import io.pravega.segmentstore.storage.DurableDataLogFactory;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import lombok.val;
@@ -155,7 +156,8 @@ public class BookKeeperLogFactory implements DurableDataLogFactory {
                 .setEnableDigestTypeAutodetection(true)
                 .setClientConnectTimeoutMillis((int) this.config.getZkConnectionTimeout().toMillis())
                 .setZkTimeout((int) this.config.getZkConnectionTimeout().toMillis())
-                .setTcpUserTimeoutMillis(this.config.getBkUserTcpTimeoutMillis());
+                .setTcpUserTimeoutMillis(this.config.getBkUserTcpTimeoutMillis())
+                .setBookieHealthCheckInterval(this.config.getBkBookieHealthCheckIntervalMillis(), TimeUnit.MILLISECONDS);
 
         if (this.config.isTLSEnabled()) {
             config = config.setTLSProvider("OpenSSL");
