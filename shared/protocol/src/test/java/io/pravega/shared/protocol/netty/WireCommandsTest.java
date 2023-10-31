@@ -22,6 +22,7 @@ import io.pravega.common.io.ByteBufferOutputStream;
 import io.pravega.shared.protocol.netty.WireCommands.Event;
 import io.pravega.test.common.AssertExtensions;
 import io.pravega.test.common.LeakDetectorTestSuite;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutput;
 import java.io.DataOutputStream;
@@ -637,7 +638,7 @@ public class WireCommandsTest extends LeakDetectorTestSuite {
 
     @Test
     public void testUpdateSegmentAttribute() throws IOException {
-        testCommand(new WireCommands.UpdateSegmentAttribute(l, testString1, uuid, l, l, ""));
+        testCommand(new WireCommands.UpdateSegmentAttribute(l, testString1, uuid, l, l, "", (byte) 1));
     }
 
     @Test
@@ -1001,8 +1002,8 @@ public class WireCommandsTest extends LeakDetectorTestSuite {
     @Test
     public void testMergeSegmentsWithAttributes() throws IOException {
         List<WireCommands.ConditionalAttributeUpdate> attributeUpdates = Arrays.asList(
-                new WireCommands.ConditionalAttributeUpdate(UUID.randomUUID(), WireCommands.ConditionalAttributeUpdate.REPLACE, 0, Long.MIN_VALUE),
-                new WireCommands.ConditionalAttributeUpdate(UUID.randomUUID(), WireCommands.ConditionalAttributeUpdate.REPLACE_IF_EQUALS, 0, Long.MIN_VALUE));
+                new WireCommands.ConditionalAttributeUpdate(UUID.randomUUID(), WireCommands.AttributeUpdateType.REPLACE, 0, Long.MIN_VALUE),
+                new WireCommands.ConditionalAttributeUpdate(UUID.randomUUID(), WireCommands.AttributeUpdateType.REPLACE_IF_EQUALS, 0, Long.MIN_VALUE));
         WireCommands.MergeSegments conditionalMergeSegments = new WireCommands.MergeSegments(l, testString1, testString2,
                 "", attributeUpdates);
         testCommand(conditionalMergeSegments);
@@ -1119,6 +1120,41 @@ public class WireCommandsTest extends LeakDetectorTestSuite {
         WireCommand read = compatibleCommand.getType().readFrom(new EnhancedByteBufInputStream(Unpooled.wrappedBuffer(bytes)),
                 bytes.length);
         assertEquals(compatibleCommand, read);
+    }
+
+    @Data
+    public static final class UpdateSegmentAttributeV5 implements Request, WireCommand {
+        final WireCommandType type = WireCommandType.UPDATE_SEGMENT_ATTRIBUTE;
+        final long requestId;
+        final String segmentName;
+        final UUID attributeId;
+        final long newValue;
+        final long expectedValue;
+        @ToString.Exclude
+        final String delegationToken;
+
+        @Override
+        public void process(RequestProcessor cp) { }
+
+        @Override
+        public void writeFields(DataOutput out) throws IOException {
+            out.writeLong(requestId);
+            out.writeUTF(segmentName);
+            out.writeLong(attributeId.getMostSignificantBits());
+            out.writeLong(attributeId.getLeastSignificantBits());
+            out.writeLong(newValue);
+            out.writeLong(expectedValue);
+            out.writeUTF(delegationToken == null ? "" : delegationToken);
+        }
+    }
+
+    @Test
+    public void testCompatibilityUpdateAttributeV5() throws IOException {
+        // Test that we are able to decode a message with a previous version
+        ByteArrayOutputStream bout = new ByteArrayOutputStream();
+        UpdateSegmentAttributeV5 commandV5 = new UpdateSegmentAttributeV5(l, testString1, uuid, l, l, "");
+        commandV5.writeFields(new DataOutputStream(bout));
+        testCommandFromByteArray(bout.toByteArray(), new WireCommands.UpdateSegmentAttribute(l, testString1, uuid, l, l, "", (byte) 4));
     }
 
 }

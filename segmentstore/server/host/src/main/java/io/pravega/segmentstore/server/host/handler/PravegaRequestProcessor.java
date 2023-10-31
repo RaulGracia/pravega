@@ -385,6 +385,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
         AttributeId attributeId = updateSegmentAttribute.getAttributeId() == null ? null : AttributeId.fromUUID(updateSegmentAttribute.getAttributeId());
         long newValue = updateSegmentAttribute.getNewValue();
         long expectedValue = updateSegmentAttribute.getExpectedValue();
+        byte attributeUpdateType = updateSegmentAttribute.getAttributeUpdateType();
         final String operation = "updateSegmentAttribute";
 
         if (!verifyToken(segmentName, updateSegmentAttribute.getRequestId(), updateSegmentAttribute.getDelegationToken(), operation)) {
@@ -392,7 +393,7 @@ public class PravegaRequestProcessor extends FailingRequestProcessor implements 
         }
 
         long trace = LoggerHelpers.traceEnter(log, operation, updateSegmentAttribute);
-        val update = new AttributeUpdate(attributeId, AttributeUpdateType.ReplaceIfEquals, newValue, expectedValue);
+        val update = new AttributeUpdate(attributeId, AttributeUpdateType.get(attributeUpdateType), newValue, expectedValue);
         segmentStore.updateAttributes(segmentName, AttributeUpdateCollection.from(update), TIMEOUT)
                     .whenComplete((v, e) -> {
                         LoggerHelpers.traceLeave(log, operation, trace, e);

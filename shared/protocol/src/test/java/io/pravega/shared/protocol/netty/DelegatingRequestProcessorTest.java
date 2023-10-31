@@ -51,7 +51,7 @@ public class DelegatingRequestProcessorTest {
         rp.setupAppend(new WireCommands.SetupAppend(0, null, "", ""));
         rp.append(new Append("", null, 0, EMPTY_EVENT, 0));
         rp.readSegment(new WireCommands.ReadSegment("", 0, 0, "", 0));
-        rp.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(0, "", null, 0, 0, ""));
+        rp.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(0, "", null, 0, 0, "", (byte) 4));
         rp.getSegmentAttribute(new WireCommands.GetSegmentAttribute(0, "", null, ""));
         rp.getStreamSegmentInfo(new WireCommands.GetStreamSegmentInfo(0, "", ""));
         rp.createSegment(new WireCommands.CreateSegment(0, "", (byte) 0, 0, "", 0));

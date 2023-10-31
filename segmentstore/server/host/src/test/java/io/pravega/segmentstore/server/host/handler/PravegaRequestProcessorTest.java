@@ -1006,8 +1006,8 @@ public class PravegaRequestProcessorTest {
         UUID randomAttribute1 = UUID.randomUUID();
         UUID randomAttribute2 = UUID.randomUUID();
         List<WireCommands.ConditionalAttributeUpdate> attributeUpdates = asList(
-                new WireCommands.ConditionalAttributeUpdate(randomAttribute1, WireCommands.ConditionalAttributeUpdate.REPLACE_IF_EQUALS, 1, streamSegmentName.hashCode()),
-                new WireCommands.ConditionalAttributeUpdate(randomAttribute2, WireCommands.ConditionalAttributeUpdate.REPLACE_IF_EQUALS, 2, streamSegmentName.hashCode())
+                new WireCommands.ConditionalAttributeUpdate(randomAttribute1, WireCommands.AttributeUpdateType.REPLACE_IF_EQUALS, 1, streamSegmentName.hashCode()),
+                new WireCommands.ConditionalAttributeUpdate(randomAttribute2, WireCommands.AttributeUpdateType.REPLACE_IF_EQUALS, 2, streamSegmentName.hashCode())
         );
 
         // The first attempt should fail as the attribute update is not going to work.
@@ -1060,8 +1060,8 @@ public class PravegaRequestProcessorTest {
         UUID randomAttribute1 = UUID.randomUUID();
         UUID randomAttribute2 = UUID.randomUUID();
         List<WireCommands.ConditionalAttributeUpdate> attributeUpdates = asList(
-                new WireCommands.ConditionalAttributeUpdate(randomAttribute1, WireCommands.ConditionalAttributeUpdate.REPLACE, 1, 0),
-                new WireCommands.ConditionalAttributeUpdate(randomAttribute2, WireCommands.ConditionalAttributeUpdate.REPLACE, 2, 0)
+                new WireCommands.ConditionalAttributeUpdate(randomAttribute1, WireCommands.AttributeUpdateType.REPLACE, 1, 0),
+                new WireCommands.ConditionalAttributeUpdate(randomAttribute2, WireCommands.AttributeUpdateType.REPLACE, 2, 0)
         );
 
         // Set a attributes in the parent segment with a certain value.
@@ -1128,6 +1128,61 @@ public class PravegaRequestProcessorTest {
         order.verify(connection).send(new WireCommands.SegmentAttributeUpdated(8, true));
         processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(9, streamSegmentName, attribute, ""));
         order.verify(connection).send(new WireCommands.SegmentAttribute(9, WireCommands.NULL_ATTRIBUTE_VALUE));
+    }
+
+    @Test(timeout = 20000)
+    public void testSegmentAttributeUpdateTypes() throws Exception {
+        String streamSegmentName = "scope/stream/testSegmentAttribute";
+        UUID attribute = UUID.randomUUID();
+        @Cleanup
+        ServiceBuilder serviceBuilder = newInlineExecutionInMemoryBuilder(getBuilderConfig());
+        serviceBuilder.initialize();
+        StreamSegmentStore store = serviceBuilder.createStreamSegmentService();
+        ServerConnection connection = mock(ServerConnection.class);
+        InOrder order = inOrder(connection);
+        PravegaRequestProcessor processor = new PravegaRequestProcessor(store, mock(TableStore.class), connection,
+                new IndexAppendProcessor(serviceBuilder.getLowPriorityExecutor(), store));
+
+        // Execute and Verify createSegment/getStreamSegmentInfo calling stack is executed as design.
+        processor.createSegment(new WireCommands.CreateSegment(1, streamSegmentName, WireCommands.CreateSegment.NO_SCALE, 0, "", 0));
+        order.verify(connection).send(new WireCommands.SegmentCreated(1, streamSegmentName));
+
+        processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(2, streamSegmentName, attribute, ""));
+        order.verify(connection).send(new WireCommands.SegmentAttribute(2, WireCommands.NULL_ATTRIBUTE_VALUE));
+
+        // First, try the None attribute update type, which essentially initializes the value of the attribute.
+        processor.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(2, streamSegmentName, attribute, 0, WireCommands.NULL_ATTRIBUTE_VALUE, "", (byte) 0));
+        order.verify(connection).send(new WireCommands.SegmentAttributeUpdated(2, true));
+        processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(3, streamSegmentName, attribute, ""));
+        order.verify(connection).send(new WireCommands.SegmentAttribute(3, 0));
+
+        // Try to replace the existing value in the attribute by another one (Replace update type)
+        processor.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(4, streamSegmentName, attribute, 1, WireCommands.NULL_ATTRIBUTE_VALUE, "", (byte) 1));
+        order.verify(connection).send(new WireCommands.SegmentAttributeUpdated(4, true));
+        processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(5, streamSegmentName, attribute, ""));
+        order.verify(connection).send(new WireCommands.SegmentAttribute(5, 1));
+
+        // Try to replace the existing value in the attribute if the new one is greater (ReplaceIfGreater update type)
+        processor.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(6, streamSegmentName, attribute, 2, WireCommands.NULL_ATTRIBUTE_VALUE, "", (byte) 2));
+        order.verify(connection).send(new WireCommands.SegmentAttributeUpdated(6, true));
+        processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(7, streamSegmentName, attribute, ""));
+        order.verify(connection).send(new WireCommands.SegmentAttribute(7, 2));
+
+        // Exercise the accumulate update type (Accumulate update type)
+        processor.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(8, streamSegmentName, attribute, 2, WireCommands.NULL_ATTRIBUTE_VALUE, "", (byte) 3));
+        order.verify(connection).send(new WireCommands.SegmentAttributeUpdated(8, true));
+        processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(9, streamSegmentName, attribute, ""));
+        order.verify(connection).send(new WireCommands.SegmentAttribute(9, 4));
+        processor.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(10, streamSegmentName, attribute, -2, WireCommands.NULL_ATTRIBUTE_VALUE, "", (byte) 3));
+        order.verify(connection).send(new WireCommands.SegmentAttributeUpdated(10, true));
+        processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(11, streamSegmentName, attribute, ""));
+        order.verify(connection).send(new WireCommands.SegmentAttribute(11, 2));
+
+        // Exercise the replace-if-equals update type
+        processor.updateSegmentAttribute(new WireCommands.UpdateSegmentAttribute(12, streamSegmentName, attribute, 3, 2, "", (byte) 4));
+        order.verify(connection).send(new WireCommands.SegmentAttributeUpdated(12, true));
+        processor.getSegmentAttribute(new WireCommands.GetSegmentAttribute(13, streamSegmentName, attribute, ""));
+        order.verify(connection).send(new WireCommands.SegmentAttribute(13, 3));
     }
 
     @Test(timeout = 20000)

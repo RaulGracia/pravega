@@ -56,7 +56,7 @@ public class FailingRequestProcessorTest {
         assertThrows(IllegalStateException.class, () -> rp.setupAppend(new SetupAppend(0, null, "", "")));
         assertThrows(IllegalStateException.class, () -> rp.append(new Append("", null, 0, EMPTY_EVENT, 0)));
         assertThrows(IllegalStateException.class, () -> rp.readSegment(new ReadSegment("", 0, 0, "", 0)));
-        assertThrows(IllegalStateException.class, () -> rp.updateSegmentAttribute(new UpdateSegmentAttribute(0, "", null, 0, 0, "")));
+        assertThrows(IllegalStateException.class, () -> rp.updateSegmentAttribute(new UpdateSegmentAttribute(0, "", null, 0, 0, "", (byte) 4)));
         assertThrows(IllegalStateException.class, () -> rp.getSegmentAttribute(new GetSegmentAttribute(0, "", null, "")));
         assertThrows(IllegalStateException.class, () -> rp.getStreamSegmentInfo(new WireCommands.GetStreamSegmentInfo(0, "", "")));
         assertThrows(IllegalStateException.class, () -> rp.createSegment(new CreateSegment(0, "", (byte) 0, 0, "", 0)));
