@@ -90,6 +90,7 @@ public class S3SimpleStorageFactory implements SimpleStorageFactory {
     static S3Client createS3Client(S3StorageConfig config) {
         S3ClientBuilder builder = S3Client.builder()
                 .credentialsProvider(getCredentialsProvider(config, config.isAssumeRoleEnabled()))
+                .forcePathStyle(true)
                 .region(Region.of(config.getRegion()));
         if (config.isShouldOverrideUri()) {
             builder = builder.endpointOverride(URI.create(config.getS3Config()));
